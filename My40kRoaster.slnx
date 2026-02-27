@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="my40kroaster.client/my40kroaster.client.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="My40kRoaster.Server/My40kRoaster.Server.csproj" />
+</Solution>
