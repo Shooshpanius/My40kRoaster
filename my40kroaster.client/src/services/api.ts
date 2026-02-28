@@ -1,4 +1,4 @@
-import type { Faction } from '../types';
+import type { Faction, Unit } from '../types';
 
 const API_BASE = '/api';
 const WH40K_API = '/api/bsdata';
@@ -89,6 +89,14 @@ interface ApiCatalogueItem {
   parentId?: string;
 }
 
+interface ApiUnitItem {
+  id?: string;
+  name?: string;
+  type?: string;
+  category?: string;
+  categoryName?: string;
+}
+
 const DEFAULT_FACTIONS: Faction[] = [
   { id: 'space-marines', name: 'Space Marines' },
   { id: 'chaos-space-marines', name: 'Chaos Space Marines' },
@@ -108,3 +116,46 @@ const DEFAULT_FACTIONS: Faction[] = [
   { id: 'blood-angels', name: 'Blood Angels' },
   { id: 'space-wolves', name: 'Space Wolves' },
 ];
+
+const DEFAULT_UNITS: Unit[] = [
+  { id: 'unit-1', name: 'Chapter Master', type: 'HQ' },
+  { id: 'unit-2', name: 'Captain', type: 'HQ' },
+  { id: 'unit-3', name: 'Librarian', type: 'HQ' },
+  { id: 'unit-4', name: 'Chaplain', type: 'HQ' },
+  { id: 'unit-5', name: 'Intercessor Squad', type: 'Troops' },
+  { id: 'unit-6', name: 'Tactical Squad', type: 'Troops' },
+  { id: 'unit-7', name: 'Scout Squad', type: 'Troops' },
+  { id: 'unit-8', name: 'Terminator Squad', type: 'Elites' },
+  { id: 'unit-9', name: 'Sternguard Veterans', type: 'Elites' },
+  { id: 'unit-10', name: 'Dreadnought', type: 'Elites' },
+  { id: 'unit-11', name: 'Assault Squad', type: 'Fast Attack' },
+  { id: 'unit-12', name: 'Bike Squad', type: 'Fast Attack' },
+  { id: 'unit-13', name: 'Land Speeder', type: 'Fast Attack' },
+  { id: 'unit-14', name: 'Devastator Squad', type: 'Heavy Support' },
+  { id: 'unit-15', name: 'Predator', type: 'Heavy Support' },
+  { id: 'unit-16', name: 'Land Raider', type: 'Heavy Support' },
+  { id: 'unit-17', name: 'Rhino', type: 'Dedicated Transport' },
+  { id: 'unit-18', name: 'Drop Pod', type: 'Dedicated Transport' },
+];
+
+export async function getUnits(factionId: string): Promise<Unit[]> {
+  try {
+    const res = await fetch(`${WH40K_API}/catalogues/${encodeURIComponent(factionId)}/units`);
+    if (!res.ok) throw new Error('Failed to fetch units');
+    const data = await res.json();
+    const items: ApiUnitItem[] = Array.isArray(data.units)
+      ? data.units
+      : Array.isArray(data)
+      ? (data as ApiUnitItem[])
+      : [];
+    if (items.length === 0) return DEFAULT_UNITS;
+    return items.map((item) => ({
+      id: item.id ?? item.name ?? '',
+      name: item.name ?? '',
+      type: item.type ?? item.category ?? item.categoryName ?? 'Other',
+    }));
+  } catch (err) {
+    console.error('Failed to fetch units from API, using defaults:', err);
+    return DEFAULT_UNITS;
+  }
+}

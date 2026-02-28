@@ -19,5 +19,19 @@ namespace My40kRoaster.Server.Controllers
                 StatusCode = (int)response.StatusCode
             };
         }
+
+        [HttpGet("catalogues/{id}/units")]
+        public async Task<IActionResult> GetCatalogueUnits(string id)
+        {
+            var client = httpClientFactory.CreateClient("wh40kapi");
+            using var response = await client.GetAsync($"catalogues/{id}/units").ConfigureAwait(false);
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return new ContentResult
+            {
+                Content = content,
+                ContentType = "application/json; charset=utf-8",
+                StatusCode = (int)response.StatusCode
+            };
+        }
     }
 }
