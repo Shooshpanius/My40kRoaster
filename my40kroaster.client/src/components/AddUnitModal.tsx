@@ -64,6 +64,9 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd }: AddUnit
                       {grouped[type].map(unit => (
                         <li key={unit.id} className="unit-item">
                           <span className="unit-name">{unit.name}</span>
+                          {unit.cost !== undefined && (
+                            <span className="unit-cost">{unit.cost} pts</span>
+                          )}
                           <button
                             className="btn btn-primary btn-sm"
                             onClick={() => onAdd(unit)}

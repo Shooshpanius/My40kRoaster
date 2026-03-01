@@ -583,6 +583,12 @@ body {
   flex: 1;
 }
 
+.unit-cost {
+  font-size: 0.8rem;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
 /* Roster Units List */
 .roster-units-list {
   list-style: none;

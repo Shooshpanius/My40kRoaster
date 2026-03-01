@@ -98,6 +98,11 @@ interface ApiUnitItem {
   categoryName?: string;
   categories?: Array<{ id?: string; name?: string; primary?: boolean }>;
   unitCategories?: Array<{ id?: string; name?: string; primary?: boolean }>;
+  cost?: number;
+  costs?: number | Array<{ name?: string; value?: number }>;
+  points?: number;
+  pts?: number;
+  pointCost?: number;
 }
 
 const DEFAULT_FACTIONS: Faction[] = [
@@ -158,7 +163,16 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         cats?.find(c => c.primary)?.name ??
         cats?.[0]?.name ??
         item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
-      return { id: item.id ?? item.name ?? '', name: item.name ?? '', category };
+      let cost: number | undefined;
+      if (typeof item.cost === 'number') cost = item.cost;
+      else if (typeof item.points === 'number') cost = item.points;
+      else if (typeof item.pts === 'number') cost = item.pts;
+      else if (typeof item.pointCost === 'number') cost = item.pointCost;
+      else if (Array.isArray(item.costs)) {
+        const pts = item.costs.find(c => { const n = c.name?.toLowerCase(); return n?.includes('pts') || n?.includes('point'); });
+        cost = pts?.value ?? item.costs[0]?.value;
+      } else if (typeof item.costs === 'number') cost = item.costs;
+      return { id: item.id ?? item.name ?? '', name: item.name ?? '', category, cost };
     });
   } catch (err) {
     console.error('Failed to fetch units from API, using defaults:', err);

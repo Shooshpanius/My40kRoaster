@@ -25,6 +25,7 @@ export interface Unit {
   id: string;
   name: string;
   category: string;
+  cost?: number;
 }
 
 export interface RosterUnit extends Unit {
