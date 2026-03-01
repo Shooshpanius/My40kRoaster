@@ -89,12 +89,6 @@ interface ApiCatalogueItem {
   parentId?: string;
 }
 
-interface ApiUnitCategory {
-  id?: string;
-  name?: string;
-  primary?: boolean;
-}
-
 interface ApiUnitItem {
   id?: string;
   name?: string;
@@ -102,6 +96,7 @@ interface ApiUnitItem {
   type?: string;      // fallback for older API responses
   category?: string;
   categoryName?: string;
+  categories?: Array<{ id?: string; name?: string; primary?: boolean }>;
   unitCategories?: Array<{ id?: string; name?: string; primary?: boolean }>;
 }
 
@@ -146,22 +141,6 @@ const DEFAULT_UNITS: Unit[] = [
   { id: 'unit-18', name: 'Drop Pod', category: 'Dedicated Transport' },
 ];
 
-async function fetchUnitCategory(unitId: string): Promise<string | undefined> {
-  try {
-    const res = await fetch(`${WH40K_API}/units/${encodeURIComponent(unitId)}/categories`);
-    if (!res.ok) return undefined;
-    const data = await res.json();
-    const cats: ApiUnitCategory[] = Array.isArray(data.categories)
-      ? data.categories
-      : Array.isArray(data)
-      ? (data as ApiUnitCategory[])
-      : [];
-    return cats.find(c => c.primary)?.name ?? cats[0]?.name;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function getUnits(factionId: string): Promise<Unit[]> {
   try {
     const res = await fetch(`${WH40K_API}/catalogues/${encodeURIComponent(factionId)}/units`);
@@ -173,19 +152,14 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       ? (data as ApiUnitItem[])
       : [];
     if (items.length === 0) return DEFAULT_UNITS;
-    return Promise.all(
-      items.map(async (item) => {
-        const id = item.id ?? item.name ?? '';
-        const inlineCat =
-          item.unitCategories?.find(c => c.primary)?.name ??
-          item.unitCategories?.[0]?.name;
-        const category =
-          (id ? await fetchUnitCategory(id) : undefined) ??
-          inlineCat ??
-          item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
-        return { id, name: item.name ?? '', category };
-      })
-    );
+    return items.map((item) => {
+      const cats = item.categories ?? item.unitCategories;
+      const category =
+        cats?.find(c => c.primary)?.name ??
+        cats?.[0]?.name ??
+        item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
+      return { id: item.id ?? item.name ?? '', name: item.name ?? '', category };
+    });
   } catch (err) {
     console.error('Failed to fetch units from API, using defaults:', err);
     return DEFAULT_UNITS;
