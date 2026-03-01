@@ -117,6 +117,9 @@ export function RosterDetailPage() {
                   <li key={unit.entryId} className="roster-unit-item">
                     <span className="roster-unit-type">{unit.category}</span>
                     <span className="roster-unit-name">{unit.name}</span>
+                    {unit.cost !== undefined && (
+                      <span className="unit-cost">{unit.cost} pts</span>
+                    )}
                     <button
                       className="btn btn-danger btn-sm"
                       onClick={() => setRosterUnits(prev => prev.filter(u => u.entryId !== unit.entryId))}
