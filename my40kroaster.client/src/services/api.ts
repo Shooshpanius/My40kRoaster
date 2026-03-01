@@ -98,6 +98,11 @@ interface ApiUnitItem {
   categoryName?: string;
   categories?: Array<{ id?: string; name?: string; primary?: boolean }>;
   unitCategories?: Array<{ id?: string; name?: string; primary?: boolean }>;
+  cost?: number | string;
+  costs?: number | string | Array<{ name?: string; value?: number | string }>;
+  points?: number | string;
+  pts?: number | string;
+  pointCost?: number | string;
 }
 
 const DEFAULT_FACTIONS: Faction[] = [
@@ -121,24 +126,24 @@ const DEFAULT_FACTIONS: Faction[] = [
 ];
 
 const DEFAULT_UNITS: Unit[] = [
-  { id: 'unit-1', name: 'Chapter Master', category: 'HQ' },
-  { id: 'unit-2', name: 'Captain', category: 'HQ' },
-  { id: 'unit-3', name: 'Librarian', category: 'HQ' },
-  { id: 'unit-4', name: 'Chaplain', category: 'HQ' },
-  { id: 'unit-5', name: 'Intercessor Squad', category: 'Troops' },
-  { id: 'unit-6', name: 'Tactical Squad', category: 'Troops' },
-  { id: 'unit-7', name: 'Scout Squad', category: 'Troops' },
-  { id: 'unit-8', name: 'Terminator Squad', category: 'Elites' },
-  { id: 'unit-9', name: 'Sternguard Veterans', category: 'Elites' },
-  { id: 'unit-10', name: 'Dreadnought', category: 'Elites' },
-  { id: 'unit-11', name: 'Assault Squad', category: 'Fast Attack' },
-  { id: 'unit-12', name: 'Bike Squad', category: 'Fast Attack' },
-  { id: 'unit-13', name: 'Land Speeder', category: 'Fast Attack' },
-  { id: 'unit-14', name: 'Devastator Squad', category: 'Heavy Support' },
-  { id: 'unit-15', name: 'Predator', category: 'Heavy Support' },
-  { id: 'unit-16', name: 'Land Raider', category: 'Heavy Support' },
-  { id: 'unit-17', name: 'Rhino', category: 'Dedicated Transport' },
-  { id: 'unit-18', name: 'Drop Pod', category: 'Dedicated Transport' },
+  { id: 'unit-1', name: 'Chapter Master', category: 'HQ', cost: 80 },
+  { id: 'unit-2', name: 'Captain', category: 'HQ', cost: 80 },
+  { id: 'unit-3', name: 'Librarian', category: 'HQ', cost: 70 },
+  { id: 'unit-4', name: 'Chaplain', category: 'HQ', cost: 65 },
+  { id: 'unit-5', name: 'Intercessor Squad', category: 'Troops', cost: 95 },
+  { id: 'unit-6', name: 'Tactical Squad', category: 'Troops', cost: 100 },
+  { id: 'unit-7', name: 'Scout Squad', category: 'Troops', cost: 65 },
+  { id: 'unit-8', name: 'Terminator Squad', category: 'Elites', cost: 200 },
+  { id: 'unit-9', name: 'Sternguard Veterans', category: 'Elites', cost: 135 },
+  { id: 'unit-10', name: 'Dreadnought', category: 'Elites', cost: 150 },
+  { id: 'unit-11', name: 'Assault Squad', category: 'Fast Attack', cost: 115 },
+  { id: 'unit-12', name: 'Bike Squad', category: 'Fast Attack', cost: 90 },
+  { id: 'unit-13', name: 'Land Speeder', category: 'Fast Attack', cost: 70 },
+  { id: 'unit-14', name: 'Devastator Squad', category: 'Heavy Support', cost: 95 },
+  { id: 'unit-15', name: 'Predator', category: 'Heavy Support', cost: 110 },
+  { id: 'unit-16', name: 'Land Raider', category: 'Heavy Support', cost: 285 },
+  { id: 'unit-17', name: 'Rhino', category: 'Dedicated Transport', cost: 75 },
+  { id: 'unit-18', name: 'Drop Pod', category: 'Dedicated Transport', cost: 65 },
 ];
 
 export async function getUnits(factionId: string): Promise<Unit[]> {
@@ -158,7 +163,22 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         cats?.find(c => c.primary)?.name ??
         cats?.[0]?.name ??
         item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
-      return { id: item.id ?? item.name ?? '', name: item.name ?? '', category };
+      let cost: number | undefined;
+      const toNum = (v: unknown): number | undefined => {
+        if (v === null || v === undefined || v === '') return undefined;
+        const n = Number(v);
+        return isFinite(n) ? n : undefined;
+      };
+      if (item.cost !== undefined) cost = toNum(item.cost);
+      else if (item.points !== undefined) cost = toNum(item.points);
+      else if (item.pts !== undefined) cost = toNum(item.pts);
+      else if (item.pointCost !== undefined) cost = toNum(item.pointCost);
+      else if (Array.isArray(item.costs)) {
+        const pts = item.costs.find(c => { const n = c.name?.toLowerCase(); return n?.includes('pts') || n?.includes('point'); });
+        const raw = pts?.value ?? item.costs[0]?.value;
+        cost = toNum(raw);
+      } else if (item.costs !== undefined) cost = toNum(item.costs);
+      return { id: item.id ?? item.name ?? '', name: item.name ?? '', category, cost };
     });
   } catch (err) {
     console.error('Failed to fetch units from API, using defaults:', err);
