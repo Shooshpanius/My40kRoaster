@@ -1,4 +1,4 @@
-import type { Faction, Unit } from '../types';
+import type { Faction, Unit, UnitCostBand } from '../types';
 
 const API_BASE = '/api';
 const WH40K_API = '/api/bsdata';
@@ -103,6 +103,35 @@ export async function getFactions(): Promise<Faction[]> {
   }
 }
 
+interface ApiCostTier {
+  id?: number;
+  unitId?: string;
+  minModels?: number | string;
+  maxModels?: number | string;
+  points?: number | string;
+}
+
+export async function getUnitCostTiers(unitId: string): Promise<UnitCostBand[]> {
+  try {
+    const res = await fetch(`${WH40K_API}/units/${encodeURIComponent(unitId)}/cost-tiers`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return [];
+    const toNum = (v: unknown): number => {
+      const n = Number(v);
+      return isFinite(n) ? n : 0;
+    };
+    return (data as ApiCostTier[]).map(t => ({
+      minModels: toNum(t.minModels),
+      maxModels: toNum(t.maxModels),
+      cost: toNum(t.points),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+
 interface ApiCatalogueItem {
   id?: string;
   gameSystemId?: string;
@@ -189,7 +218,7 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       ? (data as ApiUnitItem[])
       : [];
     if (items.length === 0) return DEFAULT_UNITS;
-    return items.map((item) => {
+    const parsed: Unit[] = items.map((item) => {
       const cats = item.categories ?? item.unitCategories;
       const category =
         cats?.find(c => c.primary)?.name ??
@@ -215,6 +244,25 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       const maxInRoster = item.maxInRoster !== undefined ? toNum(item.maxInRoster) : undefined;
       return { id: item.id ?? item.name ?? '', name: item.name ?? '', category, cost, isLeader, maxInRoster };
     });
+
+    // Для отрядов с нулевой/отсутствующей стоимостью запрашиваем диапазоны стоимости
+    const variableCostUnits = parsed.filter(u => u.cost === 0 || u.cost === undefined);
+    if (variableCostUnits.length > 0) {
+      const tiersResults = await Promise.all(
+        variableCostUnits.map(u => getUnitCostTiers(u.id))
+      );
+      variableCostUnits.forEach((unit, i) => {
+        const bands = tiersResults[i];
+        if (bands.length > 0) {
+          unit.costBands = bands;
+          // Стоимость по умолчанию — первый диапазон
+          unit.cost = bands[0].cost;
+          unit.modelCount = bands[0].minModels;
+        }
+      });
+    }
+
+    return parsed;
   } catch (err) {
     console.error('Failed to fetch units from API, using defaults:', err);
     return DEFAULT_UNITS;

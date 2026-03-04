@@ -3,10 +3,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRosters } from '../contexts/RosterContext';
 import { useAuth } from '../contexts/AuthContext';
 import { AddUnitModal } from '../components/AddUnitModal';
-import type { RosterUnit, UnitGroup } from '../types';
+import type { RosterUnit, UnitGroup, UnitCostBand } from '../types';
 import * as api from '../services/api';
 
 const POINTS_OPTIONS = [500, 1000, 1500, 2000, 2500];
+
+function getCostForModelCount(bands: UnitCostBand[], count: number): number {
+  const band = bands.find(b => count >= b.minModels && count <= b.maxModels);
+  return band?.cost ?? bands[0].cost;
+}
 
 function loadLocalUnits(rosterId: string): UnitGroup[] {
   try {
@@ -200,6 +205,56 @@ export function RosterDetailPage() {
                             <span className="unit-cost">{primaryUnit.cost} pts</span>
                           )}
                         </div>
+                        {primaryUnit.costBands && primaryUnit.costBands.length > 1 && (() => {
+                          const bands = primaryUnit.costBands;
+                          const minM = bands[0].minModels;
+                          const maxM = bands[bands.length - 1].maxModels;
+                          const currentCount = primaryUnit.modelCount ?? minM;
+                          const setCount = (val: number) => {
+                            const clamped = Math.min(maxM, Math.max(minM, val));
+                            const newCost = getCostForModelCount(bands, clamped);
+                            const updated = unitGroups.map(g => g.id === group.id
+                              ? {
+                                  ...g,
+                                  units: g.units.map((u, idx) => idx === 0
+                                    ? { ...u, modelCount: clamped, cost: newCost }
+                                    : u
+                                  )
+                                }
+                              : g
+                            );
+                            setUnitGroups(updated);
+                            persistUnits(updated);
+                          };
+                          return (
+                            <div className="unit-model-count">
+                              <span className="unit-model-count-label">Моделей:</span>
+                              <button
+                                type="button"
+                                className="unit-model-count-btn"
+                                onClick={() => setCount(currentCount - 1)}
+                                disabled={currentCount <= minM}
+                                aria-label="Уменьшить количество моделей"
+                              >−</button>
+                              <input
+                                type="number"
+                                className="unit-model-count-input"
+                                value={currentCount}
+                                min={minM}
+                                max={maxM}
+                                onChange={e => setCount(parseInt(e.target.value, 10) || minM)}
+                                aria-label="Количество моделей"
+                              />
+                              <button
+                                type="button"
+                                className="unit-model-count-btn"
+                                onClick={() => setCount(currentCount + 1)}
+                                disabled={currentCount >= maxM}
+                                aria-label="Увеличить количество моделей"
+                              >+</button>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="unit-group-actions">
                         <button

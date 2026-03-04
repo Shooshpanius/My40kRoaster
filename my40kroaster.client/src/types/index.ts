@@ -22,6 +22,12 @@ export interface Faction {
   parentId?: string;
 }
 
+export interface UnitCostBand {
+  minModels: number;
+  maxModels: number;
+  cost: number;
+}
+
 export interface Unit {
   id: string;
   name: string;
@@ -30,6 +36,10 @@ export interface Unit {
   isLeader?: boolean;
   // Максимальное количество отрядов данного типа в ростере (из API)
   maxInRoster?: number;
+  // Диапазоны стоимости в зависимости от количества моделей
+  costBands?: UnitCostBand[];
+  // Выбранное количество моделей
+  modelCount?: number;
 }
 
 export interface RosterUnit extends Unit {
