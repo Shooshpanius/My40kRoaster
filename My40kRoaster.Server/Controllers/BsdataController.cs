@@ -75,5 +75,19 @@ namespace My40kRoaster.Server.Controllers
                 StatusCode = (int)response.StatusCode
             };
         }
+
+        [HttpGet("units/{id}")]
+        public async Task<IActionResult> GetUnitDetails(string id)
+        {
+            var client = httpClientFactory.CreateClient("wh40kapi");
+            using var response = await client.GetAsync($"units/{Uri.EscapeDataString(id)}").ConfigureAwait(false);
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return new ContentResult
+            {
+                Content = content,
+                ContentType = "application/json; charset=utf-8",
+                StatusCode = (int)response.StatusCode
+            };
+        }
     }
 }

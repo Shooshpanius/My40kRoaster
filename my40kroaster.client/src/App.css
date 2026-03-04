@@ -630,6 +630,55 @@ body {
   font-weight: 600;
 }
 
+/* Счётчик моделей в отряде (например, "10 мод.") */
+.unit-model-count {
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+/* Селектор размера отряда (мини/максимальный состав) */
+.unit-size-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0;
+}
+
+.unit-size-label {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+}
+
+.unit-size-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.unit-size-option {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface2, #1e1e2e);
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.unit-size-option:hover {
+  border-color: var(--gold, #c9a84c);
+  color: var(--text);
+}
+
+.unit-size-option.active {
+  border-color: var(--gold, #c9a84c);
+  background: rgba(201, 168, 76, 0.12);
+  color: var(--gold, #c9a84c);
+  font-weight: 600;
+}
+
 /* Unit Groups */
 .unit-groups {
   display: flex;

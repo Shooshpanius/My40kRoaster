@@ -1,4 +1,4 @@
-import type { Faction, Unit } from '../types';
+import type { Faction, Unit, UnitCostBand } from '../types';
 
 const API_BASE = '/api';
 const WH40K_API = '/api/bsdata';
@@ -128,13 +128,37 @@ interface ApiUnitItem {
   categories?: Array<{ id?: string; name?: string; primary?: boolean }>;
   unitCategories?: Array<{ id?: string; name?: string; primary?: boolean }>;
   cost?: number | string;
-  costs?: number | string | Array<{ name?: string; value?: number | string }>;
+  costs?: number | string | Array<{ name?: string; value?: number | string; models?: number | string }>;
   points?: number | string;
   pts?: number | string;
   pointCost?: number | string;
   infoLinks?: ApiInfoLink[];
   // Максимальное количество отрядов данного типа в ростере
   maxInRoster?: number | string;
+  // Минимальное/максимальное количество моделей в отряде
+  minModels?: number | string;
+  maxModels?: number | string;
+  // Ограничения из BattleScribe (могут содержать min/max моделей)
+  constraints?: Array<{
+    type?: string;
+    value?: number | string;
+    scope?: string;
+    field?: string;
+  }>;
+  // Ценовые диапазоны для разного количества моделей
+  costBands?: Array<{
+    minModels?: number | string;
+    maxModels?: number | string;
+    minCount?: number | string;
+    maxCount?: number | string;
+    count?: number | string;
+    cost?: number | string;
+    value?: number | string;
+  }>;
+  // Стоимость при полном составе отряда (если отличается от базовой)
+  fullStrengthCost?: number | string;
+  // Количество моделей в отряде (если фиксировано)
+  modelCount?: number | string;
 }
 
 const DEFAULT_FACTIONS: Faction[] = [
@@ -213,7 +237,83 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       const isLeader = item.infoLinks?.some(l => l.type === 'rule' && l.name === 'Leader') ?? false;
       // Парсим maxInRoster — максимальное количество отрядов данного типа в ростере
       const maxInRoster = item.maxInRoster !== undefined ? toNum(item.maxInRoster) : undefined;
-      return { id: item.id ?? item.name ?? '', name: item.name ?? '', category, cost, isLeader, maxInRoster };
+
+      // Парсим количество моделей в отряде
+      // Пробуем прямые поля minModels/maxModels
+      let minModels = item.minModels !== undefined ? toNum(item.minModels) : undefined;
+      let maxModels = item.maxModels !== undefined ? toNum(item.maxModels) : undefined;
+
+      // Если нет прямых полей, ищем в constraints (формат BattleScribe)
+      if ((minModels === undefined || maxModels === undefined) && Array.isArray(item.constraints)) {
+        for (const c of item.constraints) {
+          const v = toNum(c.value);
+          if (v === undefined) continue;
+          if (c.type === 'min' && minModels === undefined) minModels = v;
+          if (c.type === 'max' && maxModels === undefined) maxModels = v;
+        }
+      }
+
+      // Если modelCount задан явно (фиксированный отряд), используем его
+      if (item.modelCount !== undefined) {
+        const mc = toNum(item.modelCount);
+        if (mc !== undefined) {
+          minModels = mc;
+          maxModels = mc;
+        }
+      }
+
+      // Парсим ценовые диапазоны (costBands) — стоимость зависит от числа моделей
+      let costBands: UnitCostBand[] | undefined;
+      if (Array.isArray(item.costBands) && item.costBands.length > 0) {
+        const parsed: UnitCostBand[] = [];
+        for (const band of item.costBands) {
+          const bandMin = toNum(band.minModels ?? band.minCount);
+          const bandMax = toNum(band.maxModels ?? band.maxCount ?? band.count);
+          const bandCost = toNum(band.cost ?? band.value);
+          if (bandMax !== undefined && bandCost !== undefined) {
+            parsed.push({
+              minModels: bandMin ?? 0,
+              maxModels: bandMax,
+              cost: bandCost,
+            });
+          }
+        }
+        if (parsed.length > 1) costBands = parsed;
+      }
+
+      // Если costBands нет, но есть fullStrengthCost и minModels/maxModels отличаются,
+      // строим диапазоны из базовой стоимости и fullStrengthCost
+      const shouldBuildFromFullStrength = !costBands
+        && item.fullStrengthCost !== undefined
+        && cost !== undefined
+        && minModels !== undefined
+        && maxModels !== undefined
+        && minModels < maxModels;
+      if (shouldBuildFromFullStrength) {
+        const fullCost = toNum(item.fullStrengthCost);
+        if (fullCost !== undefined && fullCost !== cost) {
+          costBands = [
+            { minModels: minModels!, maxModels: minModels!, cost: cost! },
+            { minModels: minModels! + 1, maxModels: maxModels!, cost: fullCost },
+          ];
+        }
+      }
+
+      // Если costs — массив с несколькими записями и у записей есть поле models,
+      // строим costBands из этих данных
+      if (!costBands && Array.isArray(item.costs) && item.costs.length > 1) {
+        const banded: UnitCostBand[] = [];
+        for (const c of item.costs as Array<{ name?: string; value?: number | string; models?: number | string }>) {
+          const bandModels = toNum(c.models);
+          const bandCost = toNum(c.value);
+          if (bandModels !== undefined && bandCost !== undefined) {
+            banded.push({ minModels: bandModels, maxModels: bandModels, cost: bandCost });
+          }
+        }
+        if (banded.length > 1) costBands = banded;
+      }
+
+      return { id: item.id ?? item.name ?? '', name: item.name ?? '', category, cost, isLeader, maxInRoster, minModels, maxModels, costBands };
     });
   } catch (err) {
     console.error('Failed to fetch units from API, using defaults:', err);
