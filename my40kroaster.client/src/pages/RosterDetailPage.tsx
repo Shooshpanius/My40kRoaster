@@ -130,14 +130,19 @@ export function RosterDetailPage() {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-checkbox-label">
-              <input
-                type="checkbox"
-                checked={allowLegends}
-                disabled={hasLegendsUnits}
-                onChange={e => setAllowLegends(e.target.checked)}
-              />
-              <span>[LEG] Разрешить отряды с [Legends]</span>
+            <label className={`toggle-row${hasLegendsUnits ? ' toggle-row--disabled' : ''}`}>
+              <span className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={allowLegends}
+                  disabled={hasLegendsUnits}
+                  onChange={e => setAllowLegends(e.target.checked)}
+                />
+                <span className="toggle-track" />
+              </span>
+              <span className="toggle-label">
+                [LEG] Разрешить отряды с [Legends]
+              </span>
             </label>
             {hasLegendsUnits && (
               <div className="form-hint">Нельзя отключить: в ростере есть отряды с [Legends]</div>
