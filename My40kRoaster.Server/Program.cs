@@ -102,6 +102,17 @@ using (var scope = app.Services.CreateScope())
             FOREIGN KEY (UnitId) REFERENCES BsDataUnits(Id) ON DELETE CASCADE
         )
         """);
+    // One-time migration: remove faction data cached before cost-tier support was added.
+    // Factions whose every unit has no cost tiers are deleted so they are re-imported
+    // with the current parser on next access.
+    db.Database.ExecuteSqlRaw("""
+        DELETE FROM BsDataUnits
+        WHERE FactionId NOT IN (
+            SELECT DISTINCT b.FactionId
+            FROM BsDataUnits b
+            INNER JOIN BsDataCostTiers ct ON ct.UnitId = b.Id
+        )
+        """);
 }
 
 app.UseDefaultFiles();

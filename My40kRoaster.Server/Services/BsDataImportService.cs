@@ -167,7 +167,9 @@ namespace My40kRoaster.Server.Services
                     if (tier.Points > 0)
                         result.Add(tier);
                 }
+                // Multiple bands OR a single band that spans a model range (variable count)
                 if (result.Count > 1) return result;
+                if (result.Count == 1 && result[0].MinModels != result[0].MaxModels) return result;
             }
 
             // 2. costs array whose items include model-count boundaries
@@ -190,7 +192,9 @@ namespace My40kRoaster.Server.Services
                     if (tier.Points > 0)
                         result.Add(tier);
                 }
+                // Multiple bands OR a single band that spans a model range (variable count)
                 if (result.Count > 1) return result;
+                if (result.Count == 1 && result[0].MinModels != result[0].MaxModels) return result;
             }
 
             return [];
