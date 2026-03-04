@@ -242,7 +242,10 @@ export function RosterDetailPage() {
                                 value={currentCount}
                                 min={minM}
                                 max={maxM}
-                                onChange={e => setCount(parseInt(e.target.value, 10) || minM)}
+                                onChange={e => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (!isNaN(val)) setCount(val);
+                                }}
                                 aria-label="Количество моделей"
                               />
                               <button

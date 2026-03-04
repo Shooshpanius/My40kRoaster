@@ -130,7 +130,10 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
               value={modelCounts[unit.id] ?? minModels}
               min={minModels}
               max={maxModels}
-              onChange={e => setCount(parseInt(e.target.value, 10) || minModels)}
+              onChange={e => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val)) setCount(val);
+              }}
               aria-label="Количество моделей"
             />
             <button
