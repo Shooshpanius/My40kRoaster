@@ -509,8 +509,18 @@ body {
   padding: 1rem;
 }
 
-/* Accordion */
-.accordion {
+.modal-search {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-search .form-input {
+  margin: 0;
+}
+
+.accordion-body--search {
+  border-top: none;
+}
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

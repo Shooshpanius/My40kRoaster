@@ -18,6 +18,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [openType, setOpenType] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     getUnits(factionId).then(data => {
@@ -60,6 +61,42 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     return currentUnitGroups.filter(g => g.units.length > 0 && g.units[0].id === unitId).length;
   };
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const searchResults = normalizedQuery
+    ? visibleUnits.filter(u => u.name.toLowerCase().includes(normalizedQuery))
+    : [];
+
+  const renderUnitItem = (unit: Unit) => {
+    const canAdd = remainingPoints === undefined || unit.cost === undefined || unit.cost <= remainingPoints;
+    const inRoster = countInRoster(unit.id);
+    const limitReached = unit.maxInRoster !== undefined && inRoster >= unit.maxInRoster;
+    return (
+      <li key={unit.id} className="unit-item">
+        <div className="unit-info">
+          <span className="unit-name">{unit.name}</span>
+          {unit.cost !== undefined && (
+            <span className="unit-cost">{unit.cost} pts</span>
+          )}
+        </div>
+        <div className="unit-item-footer">
+          {unit.maxInRoster !== undefined && (
+            <span className={`unit-roster-count${limitReached ? ' unit-roster-count--limit' : ''}`}>
+              {inRoster}/{unit.maxInRoster}
+            </span>
+          )}
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => onAdd(unit)}
+            disabled={!canAdd || limitReached}
+            aria-label={attachMode ? 'Присоединить' : 'Добавить'}
+          >
+            +
+          </button>
+        </div>
+      </li>
+    );
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
@@ -67,9 +104,27 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
           <h2>{attachMode ? `Присоединить лидера — ${factionName}` : `Добавить отряд — ${factionName}`}</h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
+        <div className="modal-search">
+          <input
+            className="form-input"
+            type="search"
+            placeholder="Поиск отряда..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            autoFocus
+          />
+        </div>
         <div className="modal-body">
           {loading ? (
             <div className="loading">Загрузка отрядов...</div>
+          ) : normalizedQuery ? (
+            searchResults.length === 0 ? (
+              <div className="empty-state"><p>Отряды не найдены</p></div>
+            ) : (
+              <ul className="accordion-body accordion-body--search">
+                {searchResults.map(renderUnitItem)}
+              </ul>
+            )
           ) : types.length === 0 ? (
             <div className="empty-state"><p>Отряды не найдены</p></div>
           ) : (
@@ -86,38 +141,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
                   </button>
                   {openType === type && (
                     <ul className="accordion-body">
-                      {grouped[type].map(unit => {
-                        const canAdd = remainingPoints === undefined || unit.cost === undefined || unit.cost <= remainingPoints;
-                        // Проверяем ограничение maxInRoster
-                        const inRoster = countInRoster(unit.id);
-                        const limitReached = unit.maxInRoster !== undefined && inRoster >= unit.maxInRoster;
-                        return (
-                        <li key={unit.id} className="unit-item">
-                          <div className="unit-info">
-                            <span className="unit-name">{unit.name}</span>
-                            {unit.cost !== undefined && (
-                              <span className="unit-cost">{unit.cost} pts</span>
-                            )}
-                          </div>
-                          <div className="unit-item-footer">
-                            {/* Показываем сколько отрядов данного типа уже в ростере */}
-                            {unit.maxInRoster !== undefined && (
-                              <span className={`unit-roster-count${limitReached ? ' unit-roster-count--limit' : ''}`}>
-                                {inRoster}/{unit.maxInRoster}
-                              </span>
-                            )}
-                            <button
-                              className="btn btn-primary btn-sm"
-                              onClick={() => onAdd(unit)}
-                              disabled={!canAdd || limitReached}
-                              aria-label={attachMode ? 'Присоединить' : 'Добавить'}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </li>
-                        );
-                      })}
+                      {grouped[type].map(renderUnitItem)}
                     </ul>
                   )}
                 </div>
