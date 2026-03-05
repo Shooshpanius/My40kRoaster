@@ -1,4 +1,4 @@
-import type { Faction, Unit } from '../types';
+import type { Faction, Unit, UnitCostBand } from '../types';
 
 const API_BASE = '/api';
 const WH40K_API = '/api/bsdata';
@@ -103,6 +103,14 @@ export async function getFactions(): Promise<Faction[]> {
   }
 }
 
+interface ApiCostTier {
+  id?: number;
+  unitId?: string;
+  minModels?: number | string;
+  maxModels?: number | string;
+  points?: number | string;
+}
+
 interface ApiCatalogueItem {
   id?: string;
   gameSystemId?: string;
@@ -135,6 +143,9 @@ interface ApiUnitItem {
   infoLinks?: ApiInfoLink[];
   // Максимальное количество отрядов данного типа в ростере
   maxInRoster?: number | string;
+  // Диапазоны стоимости (из unitsWithCosts)
+  costTiers?: ApiCostTier[];
+  tiers?: ApiCostTier[];
 }
 
 const DEFAULT_FACTIONS: Faction[] = [
@@ -180,7 +191,7 @@ const DEFAULT_UNITS: Unit[] = [
 
 export async function getUnits(factionId: string): Promise<Unit[]> {
   try {
-    const res = await fetch(`${WH40K_API}/fractions/${encodeURIComponent(factionId)}/units`);
+    const res = await fetch(`${WH40K_API}/fractions/${encodeURIComponent(factionId)}/unitsWithCosts`);
     if (!res.ok) throw new Error('Failed to fetch units');
     const data = await res.json();
     const items: ApiUnitItem[] = Array.isArray(data.units)
@@ -189,6 +200,15 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       ? (data as ApiUnitItem[])
       : [];
     if (items.length === 0) return DEFAULT_UNITS;
+    const toNum = (v: unknown): number | undefined => {
+      if (v === null || v === undefined || v === '') return undefined;
+      const n = Number(v);
+      return isFinite(n) ? n : undefined;
+    };
+    const toNumStrict = (v: unknown): number => {
+      const n = Number(v);
+      return isFinite(n) ? n : 0;
+    };
     return items.map((item) => {
       const cats = item.categories ?? item.unitCategories;
       const category =
@@ -196,11 +216,6 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         cats?.[0]?.name ??
         item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
       let cost: number | undefined;
-      const toNum = (v: unknown): number | undefined => {
-        if (v === null || v === undefined || v === '') return undefined;
-        const n = Number(v);
-        return isFinite(n) ? n : undefined;
-      };
       if (item.cost !== undefined) cost = toNum(item.cost);
       else if (item.points !== undefined) cost = toNum(item.points);
       else if (item.pts !== undefined) cost = toNum(item.pts);
@@ -211,9 +226,35 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         cost = toNum(raw);
       } else if (item.costs !== undefined) cost = toNum(item.costs);
       const isLeader = item.infoLinks?.some(l => l.type === 'rule' && l.name === 'Leader') ?? false;
-      // Парсим maxInRoster — максимальное количество отрядов данного типа в ростере
       const maxInRoster = item.maxInRoster !== undefined ? toNum(item.maxInRoster) : undefined;
-      return { id: item.id ?? item.name ?? '', name: item.name ?? '', category, cost, isLeader, maxInRoster };
+
+      // Парсим встроенные диапазоны стоимости (из unitsWithCosts)
+      const rawTiers = item.costTiers ?? item.tiers;
+      const hasVariableCost = Array.isArray(rawTiers) && rawTiers.length > 0;
+      const costBands: UnitCostBand[] | undefined = hasVariableCost
+        ? (rawTiers as ApiCostTier[]).map(t => ({
+            minModels: toNumStrict(t.minModels),
+            maxModels: toNumStrict(t.maxModels),
+            cost: toNumStrict(t.points),
+          }))
+        : undefined;
+
+      // Если есть диапазоны — стоимость по умолчанию из первого диапазона
+      if (hasVariableCost) {
+        cost = costBands![0].cost;
+      }
+
+      return {
+        id: item.id ?? item.name ?? '',
+        name: item.name ?? '',
+        category,
+        cost,
+        isLeader,
+        maxInRoster,
+        costBands: hasVariableCost ? costBands : undefined,
+        modelCount: hasVariableCost && costBands ? costBands[0].minModels : undefined,
+        hasVariableCost,
+      };
     });
   } catch (err) {
     console.error('Failed to fetch units from API, using defaults:', err);

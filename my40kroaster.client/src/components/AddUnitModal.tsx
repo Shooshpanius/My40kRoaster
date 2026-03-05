@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Unit, UnitGroup } from '../types';
+import type { Unit, UnitGroup, UnitCostBand } from '../types';
 import { getUnits } from '../services/api';
 
 interface AddUnitModalProps {
@@ -14,11 +14,17 @@ interface AddUnitModalProps {
   allowLegends?: boolean;
 }
 
+function getCostForModelCount(bands: UnitCostBand[], count: number): number {
+  const band = bands.find(b => count >= b.minModels && count <= b.maxModels);
+  return band?.cost ?? bands[0].cost;
+}
+
 export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMode, remainingPoints, currentUnitGroups, allowLegends }: AddUnitModalProps) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [openType, setOpenType] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [modelCounts, setModelCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     getUnits(factionId).then(data => {
@@ -38,7 +44,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     const cat = u.category?.toLowerCase();
     if (cat === 'other') return false;
     if (cat === 'upgrade') return false;
-    if (u.cost == null || u.cost === 0) return false;
+    if ((u.cost == null || u.cost === 0) && !u.costBands?.length) return false;
     return true;
   });
 
@@ -67,32 +73,81 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     : [];
 
   const renderUnitItem = (unit: Unit) => {
-    const canAdd = remainingPoints === undefined || unit.cost === undefined || unit.cost <= remainingPoints;
+    const hasBands = unit.costBands && unit.costBands.length > 1;
+    const minModels = hasBands ? unit.costBands![0].minModels : 1;
+    const maxModels = hasBands ? unit.costBands![unit.costBands!.length - 1].maxModels : 1;
+    const modelCount = hasBands ? (modelCounts[unit.id] ?? minModels) : unit.modelCount;
+    const displayCost = hasBands && modelCount !== undefined
+      ? getCostForModelCount(unit.costBands!, modelCount)
+      : unit.cost;
+
+    const setCount = (val: number) => {
+      const clamped = Math.min(maxModels, Math.max(minModels, val));
+      setModelCounts(prev => ({ ...prev, [unit.id]: clamped }));
+    };
+
+    const canAdd = remainingPoints === undefined || displayCost === undefined || displayCost <= remainingPoints;
     const inRoster = countInRoster(unit.id);
     const limitReached = unit.maxInRoster !== undefined && inRoster >= unit.maxInRoster;
     return (
       <li key={unit.id} className="unit-item">
-        <div className="unit-info">
-          <span className="unit-name">{unit.name}</span>
-          {unit.cost !== undefined && (
-            <span className="unit-cost">{unit.cost} pts</span>
-          )}
-        </div>
-        <div className="unit-item-footer">
-          {unit.maxInRoster !== undefined && (
-            <span className={`unit-roster-count${limitReached ? ' unit-roster-count--limit' : ''}`}>
-              {inRoster}/{unit.maxInRoster}
+        <div className="unit-item-top">
+          <div className="unit-info">
+            <span className="unit-name">
+              {unit.name}
+              {unit.hasVariableCost && <span className="unit-variable-badge">[M]</span>}
             </span>
-          )}
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => onAdd(unit)}
-            disabled={!canAdd || limitReached}
-            aria-label={attachMode ? 'Присоединить' : 'Добавить'}
-          >
-            +
-          </button>
+            {displayCost !== undefined && (
+              <span className="unit-cost">{displayCost} pts</span>
+            )}
+          </div>
+          <div className="unit-item-footer">
+            {unit.maxInRoster !== undefined && (
+              <span className={`unit-roster-count${limitReached ? ' unit-roster-count--limit' : ''}`}>
+                {inRoster}/{unit.maxInRoster}
+              </span>
+            )}
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => onAdd({ ...unit, cost: displayCost, modelCount: hasBands ? (modelCounts[unit.id] ?? minModels) : undefined })}
+              disabled={!canAdd || limitReached}
+              aria-label={attachMode ? 'Присоединить' : 'Добавить'}
+            >
+              +
+            </button>
+          </div>
         </div>
+        {hasBands && (
+          <div className="unit-model-count">
+            <span className="unit-model-count-label">Моделей:</span>
+            <button
+              type="button"
+              className="unit-model-count-btn"
+              onClick={() => setCount((modelCounts[unit.id] ?? minModels) - 1)}
+              disabled={(modelCounts[unit.id] ?? minModels) <= minModels}
+              aria-label="Уменьшить количество моделей"
+            >−</button>
+            <input
+              type="number"
+              className="unit-model-count-input"
+              value={modelCounts[unit.id] ?? minModels}
+              min={minModels}
+              max={maxModels}
+              onChange={e => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val)) setCount(val);
+              }}
+              aria-label="Количество моделей"
+            />
+            <button
+              type="button"
+              className="unit-model-count-btn"
+              onClick={() => setCount((modelCounts[unit.id] ?? minModels) + 1)}
+              disabled={(modelCounts[unit.id] ?? minModels) >= maxModels}
+              aria-label="Увеличить количество моделей"
+            >+</button>
+          </div>
+        )}
       </li>
     );
   };
