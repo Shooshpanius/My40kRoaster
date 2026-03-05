@@ -143,11 +143,13 @@ interface ApiUnitItem {
   infoLinks?: ApiInfoLink[];
   // Максимальное количество отрядов данного типа в ростере
   maxInRoster?: number | string;
-  // Диапазоны стоимости (из unitsWithCosts / unitsTree)
+  // Диапазоны стоимости (из unitsTree)
   costTiers?: ApiCostTier[];
   tiers?: ApiCostTier[];
   // Дочерние узлы (из unitsTree)
   children?: ApiUnitItem[];
+  // Идентификатор родительского узла; null означает корневой юнит (отряд)
+  parentId?: string | null;
 }
 
 const DEFAULT_FACTIONS: Faction[] = [
@@ -197,28 +199,15 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
     if (!res.ok) throw new Error('Failed to fetch units');
     const data = await res.json();
 
-    // Рекурсивно извлекаем все юниты из дерева (unitsTree возвращает иерархическую структуру)
-    function flattenTree(nodes: ApiUnitItem[]): ApiUnitItem[] {
+    // Собираем все записи с parentId === null — это и есть отряды (независимо от стоимости)
+    function collectUnits(nodes: ApiUnitItem[]): ApiUnitItem[] {
       const result: ApiUnitItem[] = [];
       for (const node of nodes) {
-        const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-        // Включаем узел как юнит, если у него есть id/имя и данные о стоимости, правилах или тип "unit"
-        const hasUnitData =
-          node.cost !== undefined ||
-          node.points !== undefined ||
-          node.pts !== undefined ||
-          node.pointCost !== undefined ||
-          node.costs !== undefined ||
-          Array.isArray(node.costTiers) ||
-          Array.isArray(node.tiers) ||
-          Array.isArray(node.infoLinks) ||
-          node.entryType === 'unit' ||
-          node.type === 'unit';
-        if ((node.id !== undefined || node.name !== undefined) && hasUnitData) {
+        if (node.parentId === null) {
           result.push(node);
         }
-        if (hasChildren) {
-          result.push(...flattenTree(node.children ?? []));
+        if (Array.isArray(node.children) && node.children.length > 0) {
+          result.push(...collectUnits(node.children));
         }
       }
       return result;
@@ -237,7 +226,7 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       rootNodes = [];
     }
 
-    const items: ApiUnitItem[] = flattenTree(rootNodes);
+    const items: ApiUnitItem[] = collectUnits(rootNodes);
     if (items.length === 0) return DEFAULT_UNITS;
     const toNum = (v: unknown): number | undefined => {
       if (v === null || v === undefined || v === '') return undefined;
