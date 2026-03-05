@@ -198,7 +198,10 @@ export function RosterDetailPage() {
                   <div key={group.id} className="unit-group">
                     <div className="unit-group-header">
                       <div className="unit-group-info">
-                        <span className="unit-group-primary-name">{primaryUnit.name}</span>
+                        <span className="unit-group-primary-name">
+                          {primaryUnit.name}
+                          {primaryUnit.hasVariableCost && <span className="unit-variable-badge">[M]</span>}
+                        </span>
                         <div className="unit-group-meta">
                           <span className="roster-unit-type">{primaryUnit.category}</span>
                           {primaryUnit.cost !== undefined && (

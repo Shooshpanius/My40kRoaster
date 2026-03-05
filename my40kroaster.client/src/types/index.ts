@@ -40,6 +40,8 @@ export interface Unit {
   costBands?: UnitCostBand[];
   // Выбранное количество моделей
   modelCount?: number;
+  // Стоимость зависит от количества моделей в отряде
+  hasVariableCost?: boolean;
 }
 
 export interface RosterUnit extends Unit {

@@ -111,27 +111,6 @@ interface ApiCostTier {
   points?: number | string;
 }
 
-export async function getUnitCostTiers(unitId: string): Promise<UnitCostBand[]> {
-  try {
-    const res = await fetch(`${WH40K_API}/units/${encodeURIComponent(unitId)}/cost-tiers`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) return [];
-    const toNum = (v: unknown): number => {
-      const n = Number(v);
-      return isFinite(n) ? n : 0;
-    };
-    return (data as ApiCostTier[]).map(t => ({
-      minModels: toNum(t.minModels),
-      maxModels: toNum(t.maxModels),
-      cost: toNum(t.points),
-    }));
-  } catch {
-    return [];
-  }
-}
-
-
 interface ApiCatalogueItem {
   id?: string;
   gameSystemId?: string;
@@ -164,6 +143,9 @@ interface ApiUnitItem {
   infoLinks?: ApiInfoLink[];
   // Максимальное количество отрядов данного типа в ростере
   maxInRoster?: number | string;
+  // Диапазоны стоимости (из unitsWithCosts)
+  costTiers?: ApiCostTier[];
+  tiers?: ApiCostTier[];
 }
 
 const DEFAULT_FACTIONS: Faction[] = [
@@ -209,7 +191,7 @@ const DEFAULT_UNITS: Unit[] = [
 
 export async function getUnits(factionId: string): Promise<Unit[]> {
   try {
-    const res = await fetch(`${WH40K_API}/fractions/${encodeURIComponent(factionId)}/units`);
+    const res = await fetch(`${WH40K_API}/fractions/${encodeURIComponent(factionId)}/unitsWithCosts`);
     if (!res.ok) throw new Error('Failed to fetch units');
     const data = await res.json();
     const items: ApiUnitItem[] = Array.isArray(data.units)
@@ -218,18 +200,22 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       ? (data as ApiUnitItem[])
       : [];
     if (items.length === 0) return DEFAULT_UNITS;
-    const parsed: Unit[] = items.map((item) => {
+    const toNum = (v: unknown): number | undefined => {
+      if (v === null || v === undefined || v === '') return undefined;
+      const n = Number(v);
+      return isFinite(n) ? n : undefined;
+    };
+    const toNumStrict = (v: unknown): number => {
+      const n = Number(v);
+      return isFinite(n) ? n : 0;
+    };
+    return items.map((item) => {
       const cats = item.categories ?? item.unitCategories;
       const category =
         cats?.find(c => c.primary)?.name ??
         cats?.[0]?.name ??
         item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
       let cost: number | undefined;
-      const toNum = (v: unknown): number | undefined => {
-        if (v === null || v === undefined || v === '') return undefined;
-        const n = Number(v);
-        return isFinite(n) ? n : undefined;
-      };
       if (item.cost !== undefined) cost = toNum(item.cost);
       else if (item.points !== undefined) cost = toNum(item.points);
       else if (item.pts !== undefined) cost = toNum(item.pts);
@@ -240,29 +226,36 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         cost = toNum(raw);
       } else if (item.costs !== undefined) cost = toNum(item.costs);
       const isLeader = item.infoLinks?.some(l => l.type === 'rule' && l.name === 'Leader') ?? false;
-      // Парсим maxInRoster — максимальное количество отрядов данного типа в ростере
       const maxInRoster = item.maxInRoster !== undefined ? toNum(item.maxInRoster) : undefined;
-      return { id: item.id ?? item.name ?? '', name: item.name ?? '', category, cost, isLeader, maxInRoster };
+
+      // Парсим встроенные диапазоны стоимости (из unitsWithCosts)
+      const rawTiers = item.costTiers ?? item.tiers;
+      const hasVariableCost = Array.isArray(rawTiers) && rawTiers.length > 0;
+      const costBands: UnitCostBand[] | undefined = hasVariableCost
+        ? (rawTiers as ApiCostTier[]).map(t => ({
+            minModels: toNumStrict(t.minModels),
+            maxModels: toNumStrict(t.maxModels),
+            cost: toNumStrict(t.points),
+          }))
+        : undefined;
+
+      // Если есть диапазоны — стоимость по умолчанию из первого диапазона
+      if (hasVariableCost) {
+        cost = costBands![0].cost;
+      }
+
+      return {
+        id: item.id ?? item.name ?? '',
+        name: item.name ?? '',
+        category,
+        cost,
+        isLeader,
+        maxInRoster,
+        costBands: hasVariableCost ? costBands : undefined,
+        modelCount: hasVariableCost && costBands ? costBands[0].minModels : undefined,
+        hasVariableCost,
+      };
     });
-
-    // Для отрядов с нулевой/отсутствующей стоимостью запрашиваем диапазоны стоимости
-    const variableCostUnits = parsed.filter(u => u.cost === 0 || u.cost === undefined);
-    if (variableCostUnits.length > 0) {
-      const tiersResults = await Promise.all(
-        variableCostUnits.map(u => getUnitCostTiers(u.id))
-      );
-      variableCostUnits.forEach((unit, i) => {
-        const bands = tiersResults[i];
-        if (bands.length > 0) {
-          unit.costBands = bands;
-          // Стоимость по умолчанию — первый диапазон
-          unit.cost = bands[0].cost;
-          unit.modelCount = bands[0].minModels;
-        }
-      });
-    }
-
-    return parsed;
   } catch (err) {
     console.error('Failed to fetch units from API, using defaults:', err);
     return DEFAULT_UNITS;

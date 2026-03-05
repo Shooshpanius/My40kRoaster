@@ -62,6 +62,20 @@ namespace My40kRoaster.Server.Controllers
             };
         }
 
+        [HttpGet("fractions/{id}/unitsWithCosts")]
+        public async Task<IActionResult> GetFractionUnitsWithCosts(string id)
+        {
+            var client = httpClientFactory.CreateClient("wh40kapi");
+            using var response = await client.GetAsync($"fractions/{Uri.EscapeDataString(id)}/unitsWithCosts").ConfigureAwait(false);
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return new ContentResult
+            {
+                Content = content,
+                ContentType = "application/json; charset=utf-8",
+                StatusCode = (int)response.StatusCode
+            };
+        }
+
         [HttpGet("units/{id}/categories")]
         public async Task<IActionResult> GetUnitCategories(string id)
         {
