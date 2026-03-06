@@ -278,23 +278,34 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         ? (item.entryType as 'unit' | 'model')
         : undefined;
 
-      // Вложенные модели для контейнеров типа "unit".
-      // Ищем итеративно через всё поддерево, т.к. модели могут быть вложены через промежуточные контейнеры.
-      function collectModels(children: ApiUnitItem[]): ApiUnitItem[] {
-        const result: ApiUnitItem[] = [];
-        const queue: ApiUnitItem[] = [...children];
-        while (queue.length > 0) {
-          const child = queue.shift()!;
+      // Строим дерево дочерних узлов для контейнеров типа "unit".
+      // Сохраняем промежуточные контейнеры (entryType=null) как узлы дерева,
+      // чтобы в UI отображалась полная иерархия вложенности через children.
+      function buildChildTree(children: ApiUnitItem[]): Unit[] {
+        const result: Unit[] = [];
+        for (const child of children) {
           if (child.entryType === 'model') {
-            result.push(child);
-          } else if (Array.isArray(child.children)) {
-            queue.push(...child.children);
+            result.push(mapItem(child, depth + 1));
+          } else if (!child.entryType && Array.isArray(child.children) && child.children.length > 0) {
+            // Промежуточный контейнер — рекурсивно обходим его children
+            const nested = buildChildTree(child.children);
+            if (nested.length > 0) {
+              result.push({
+                id: child.id ?? child.name ?? '',
+                name: child.name ?? '',
+                category: '',
+                cost: undefined,
+                entryType: undefined,
+                models: nested,
+              });
+            }
           }
+          // Узлы типа "upgrade" и прочие — пропускаем
         }
         return result;
       }
       const models: Unit[] | undefined = depth === 0 && entryType === 'unit' && Array.isArray(item.children)
-        ? collectModels(item.children).map(child => mapItem(child, depth + 1))
+        ? buildChildTree(item.children)
         : undefined;
 
       return {

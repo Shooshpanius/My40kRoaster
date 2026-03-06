@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Unit, UnitGroup, UnitCostBand } from '../types';
 import { getUnits } from '../services/api';
 
@@ -65,7 +65,21 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     ? visibleUnits.filter(u => u.name.toLowerCase().includes(normalizedQuery))
     : [];
 
-  const renderUnitItem = (unit: Unit, isNested = false) => {
+  const renderUnitItem = (unit: Unit, depth = 0): React.ReactNode => {
+    const isNested = depth > 0;
+
+    // Промежуточный контейнер (entryType не задан, есть дочерние узлы) — рендерим как заголовок группы
+    if (unit.entryType === undefined && unit.models && unit.models.length > 0) {
+      return (
+        <li key={unit.id} className="unit-container-group">
+          <span className="unit-container-label">— {unit.name}</span>
+          <ul className="unit-nested-models">
+            {unit.models.map(child => renderUnitItem(child, depth + 1))}
+          </ul>
+        </li>
+      );
+    }
+
     // Показываем элементы управления количеством моделей только для записей entryType="model",
     // если есть несколько диапазонов стоимости ИЛИ единственный диапазон допускает разное количество (min < max).
     const hasBands = unit.entryType === 'model' && !!(unit.costBands && unit.costBands.length >= 1 &&
@@ -149,7 +163,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
         )}
         {!isNested && unit.entryType === 'unit' && unit.models && unit.models.length > 0 && (
           <ul className="unit-nested-models">
-            {unit.models.map(model => renderUnitItem(model, true))}
+            {unit.models.map(child => renderUnitItem(child, depth + 1))}
           </ul>
         )}
       </li>

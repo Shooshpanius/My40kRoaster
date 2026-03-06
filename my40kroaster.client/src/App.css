@@ -780,6 +780,25 @@ body {
   background: var(--surface2);
 }
 
+/* Промежуточный контейнер между unit и model */
+.unit-container-group {
+  list-style: none;
+}
+
+.unit-container-label {
+  display: block;
+  padding: 0.3rem 0.75rem 0.3rem 1.5rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.unit-container-group .unit-nested-models {
+  border-top: none;
+}
+
 .unit-item--nested {
   padding-left: 1.5rem;
   background: var(--surface2);
