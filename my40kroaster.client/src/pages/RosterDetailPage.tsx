@@ -1,9 +1,10 @@
+import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import { useRosters } from '../contexts/RosterContext';
 import { useAuth } from '../contexts/AuthContext';
 import { AddUnitModal } from '../components/AddUnitModal';
-import type { RosterUnit, UnitGroup, UnitCostBand } from '../types';
+import type { RosterUnit, Unit, UnitGroup, UnitCostBand } from '../types';
 import * as api from '../services/api';
 
 const POINTS_OPTIONS = [500, 1000, 1500, 2000, 2500];
@@ -11,6 +12,34 @@ const POINTS_OPTIONS = [500, 1000, 1500, 2000, 2500];
 function getCostForModelCount(bands: UnitCostBand[], count: number): number {
   const band = bands.find(b => count >= b.minModels && count <= b.maxModels);
   return band?.cost ?? bands[0].cost;
+}
+
+function renderRosterModels(models: Unit[]): React.ReactNode {
+  return models.map((model) => {
+    if (model.entryType === undefined && model.models && model.models.length > 0) {
+      return (
+        <li key={model.id} className="unit-container-group">
+          <details className="unit-container-details">
+            <summary className="unit-container-label">— {model.name}</summary>
+            <ul className="unit-nested-models unit-nested-models--roster">
+              {renderRosterModels(model.models)}
+            </ul>
+          </details>
+        </li>
+      );
+    }
+    return (
+      <li key={model.id} className="unit-nested-model-item">
+        <span className="unit-nested-model-name">
+          {model.name}
+          {model.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
+        </span>
+        {model.cost !== undefined && (
+          <span className="unit-cost">{model.cost} pts</span>
+        )}
+      </li>
+    );
+  });
 }
 
 function loadLocalUnits(rosterId: string): UnitGroup[] {
@@ -200,7 +229,8 @@ export function RosterDetailPage() {
                       <div className="unit-group-info">
                         <span className="unit-group-primary-name">
                           {primaryUnit.name}
-                          {primaryUnit.hasVariableCost && <span className="unit-variable-badge">[M]</span>}
+                          {primaryUnit.entryType === 'unit' && <span className="unit-type-badge">[U]</span>}
+                          {primaryUnit.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
                         </span>
                         <div className="unit-group-meta">
                           <span className="roster-unit-type">{primaryUnit.category}</span>
@@ -208,7 +238,7 @@ export function RosterDetailPage() {
                             <span className="unit-cost">{primaryUnit.cost} pts</span>
                           )}
                         </div>
-                        {primaryUnit.costBands && primaryUnit.costBands.length > 1 && (() => {
+                        {primaryUnit.entryType === 'model' && primaryUnit.costBands && primaryUnit.costBands.length > 1 && (() => {
                           const bands = primaryUnit.costBands;
                           const minM = bands[0].minModels;
                           const maxM = bands[bands.length - 1].maxModels;
@@ -338,6 +368,11 @@ export function RosterDetailPage() {
                             </button>
                           </li>
                         ))}
+                      </ul>
+                    )}
+                    {primaryUnit.entryType === 'unit' && primaryUnit.models && primaryUnit.models.length > 0 && (
+                      <ul className="unit-nested-models unit-nested-models--roster">
+                        {renderRosterModels(primaryUnit.models)}
                       </ul>
                     )}
                   </div>

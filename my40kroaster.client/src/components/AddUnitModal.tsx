@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Unit, UnitGroup, UnitCostBand } from '../types';
 import { getUnits } from '../services/api';
 
@@ -65,10 +65,24 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     ? visibleUnits.filter(u => u.name.toLowerCase().includes(normalizedQuery))
     : [];
 
-  const renderUnitItem = (unit: Unit) => {
-    // Показываем элементы управления количеством моделей, если есть несколько диапазонов
-    // стоимости ИЛИ единственный диапазон допускает разное количество моделей (min < max).
-    const hasBands = !!(unit.costBands && unit.costBands.length >= 1 &&
+  const renderUnitItem = (unit: Unit, depth = 0): React.ReactNode => {
+    const isNested = depth > 0;
+
+    // Промежуточный контейнер (entryType не задан, есть дочерние узлы) — рендерим как заголовок группы
+    if (unit.entryType === undefined && unit.models && unit.models.length > 0) {
+      return (
+        <li key={unit.id} className="unit-container-group">
+          <span className="unit-container-label">— {unit.name}</span>
+          <ul className="unit-nested-models">
+            {unit.models.map(child => renderUnitItem(child, depth + 1))}
+          </ul>
+        </li>
+      );
+    }
+
+    // Показываем элементы управления количеством моделей только для записей entryType="model",
+    // если есть несколько диапазонов стоимости ИЛИ единственный диапазон допускает разное количество (min < max).
+    const hasBands = unit.entryType === 'model' && !!(unit.costBands && unit.costBands.length >= 1 &&
       (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? 0)));
     const minModels = hasBands ? unit.costBands![0].minModels : 1;
     const maxModels = hasBands ? unit.costBands![unit.costBands!.length - 1].maxModels : 1;
@@ -86,32 +100,35 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     const inRoster = countInRoster(unit.id);
     const limitReached = unit.maxInRoster !== undefined && inRoster >= unit.maxInRoster;
     return (
-      <li key={unit.id} className="unit-item">
+      <li key={unit.id} className={`unit-item${isNested ? ' unit-item--nested' : ''}`}>
         <div className="unit-item-top">
           <div className="unit-info">
             <span className="unit-name">
               {unit.name}
-              {unit.hasVariableCost && <span className="unit-variable-badge">[M]</span>}
+              {unit.entryType === 'unit' && <span className="unit-type-badge">[U]</span>}
+              {unit.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
             </span>
             {displayCost !== undefined && (
               <span className="unit-cost">{displayCost} pts</span>
             )}
           </div>
-          <div className="unit-item-footer">
-            {unit.maxInRoster !== undefined && (
-              <span className={`unit-roster-count${limitReached ? ' unit-roster-count--limit' : ''}`}>
-                {inRoster}/{unit.maxInRoster}
-              </span>
-            )}
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => onAdd({ ...unit, cost: displayCost, modelCount: hasBands ? (modelCounts[unit.id] ?? minModels) : undefined })}
-              disabled={!canAdd || limitReached}
-              aria-label={attachMode ? 'Присоединить' : 'Добавить'}
-            >
-              +
-            </button>
-          </div>
+          {!isNested && (
+            <div className="unit-item-footer">
+              {unit.maxInRoster !== undefined && (
+                <span className={`unit-roster-count${limitReached ? ' unit-roster-count--limit' : ''}`}>
+                  {inRoster}/{unit.maxInRoster}
+                </span>
+              )}
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => onAdd({ ...unit, cost: displayCost, modelCount: hasBands ? (modelCounts[unit.id] ?? minModels) : undefined })}
+                disabled={!canAdd || limitReached}
+                aria-label={attachMode ? 'Присоединить' : 'Добавить'}
+              >
+                +
+              </button>
+            </div>
+          )}
         </div>
         {hasBands && (
           <div className="unit-model-count">
@@ -144,6 +161,11 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
             >+</button>
           </div>
         )}
+        {!isNested && unit.entryType === 'unit' && unit.models && unit.models.length > 0 && (
+          <ul className="unit-nested-models">
+            {unit.models.map(child => renderUnitItem(child, depth + 1))}
+          </ul>
+        )}
       </li>
     );
   };
@@ -173,7 +195,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
               <div className="empty-state"><p>Отряды не найдены</p></div>
             ) : (
               <ul className="accordion-body accordion-body--search">
-                {searchResults.map(renderUnitItem)}
+                {searchResults.map(u => renderUnitItem(u))}
               </ul>
             )
           ) : types.length === 0 ? (
@@ -192,7 +214,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
                   </button>
                   {openType === type && (
                     <ul className="accordion-body">
-                      {grouped[type].map(renderUnitItem)}
+                      {grouped[type].map(u => renderUnitItem(u))}
                     </ul>
                   )}
                 </div>

@@ -610,17 +610,20 @@ body {
   font-size: 0.95rem;
 }
 
-.unit-variable-badge {
+.unit-variable-badge,
+.unit-type-badge {
   margin-left: 0.35rem;
   font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--gold, #c9a84c);
-  border: 1px solid var(--gold, #c9a84c);
-  border-radius: 3px;
-  padding: 0 0.25rem;
-  vertical-align: middle;
+  font-weight: 700;
   letter-spacing: 0.02em;
-  opacity: 0.85;
+}
+
+.unit-variable-badge {
+  color: var(--gold, #c9a84c);
+}
+
+.unit-type-badge {
+  color: var(--accent, #7ec8e3);
 }
 
 .unit-cost {
@@ -760,6 +763,96 @@ body {
   display: flex;
   gap: 0.4rem;
   flex-shrink: 0;
+}
+
+/* Вложенные модели внутри unit-контейнера (в модальном окне добавления) */
+.unit-nested-models {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+/* Промежуточный контейнер между unit и model */
+.unit-container-group {
+  list-style: none;
+}
+
+.unit-container-details {
+  display: block;
+}
+
+.unit-container-label {
+  display: flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem 0.3rem 1.5rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.unit-container-label::before {
+  content: '▸';
+  margin-right: 0.35rem;
+  font-style: normal;
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+
+.unit-container-details[open] > .unit-container-label::before {
+  transform: rotate(90deg);
+}
+
+.unit-container-label::-webkit-details-marker {
+  display: none;
+}
+
+.unit-container-group .unit-nested-models {
+  border-top: none;
+}
+
+.unit-item--nested {
+  padding-left: 1.5rem;
+  background: var(--surface2);
+}
+
+.unit-item--nested:last-child {
+  border-bottom: none;
+}
+
+/* Вложенные модели в карточке ростера */
+.unit-nested-models--roster {
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.unit-nested-model-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 1rem 0.4rem 2rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.unit-nested-model-item:last-child {
+  border-bottom: none;
+}
+
+.unit-nested-model-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .unit-group-attached {

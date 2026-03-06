@@ -238,7 +238,8 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       const n = Number(v);
       return isFinite(n) ? n : 0;
     };
-    return items.map((item) => {
+
+    const mapItem = (item: ApiUnitItem, depth = 0): Unit => {
       const cats = item.categories ?? item.unitCategories;
       const category =
         cats?.find(c => c.primary)?.name ??
@@ -273,6 +274,40 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         cost = costBands![0].cost;
       }
 
+      const entryType = item.entryType === 'unit' || item.entryType === 'model'
+        ? (item.entryType as 'unit' | 'model')
+        : undefined;
+
+      // Строим дерево дочерних узлов для контейнеров типа "unit".
+      // Сохраняем промежуточные контейнеры (entryType=null) как узлы дерева,
+      // чтобы в UI отображалась полная иерархия вложенности через children.
+      function buildChildTree(children: ApiUnitItem[]): Unit[] {
+        const result: Unit[] = [];
+        for (const child of children) {
+          if (child.entryType === 'model') {
+            result.push(mapItem(child, depth + 1));
+          } else if (!child.entryType && Array.isArray(child.children) && child.children.length > 0) {
+            // Промежуточный контейнер — рекурсивно обходим его children
+            const nested = buildChildTree(child.children);
+            if (nested.length > 0) {
+              result.push({
+                id: child.id ?? child.name ?? '',
+                name: child.name ?? '',
+                category: '',
+                cost: undefined,
+                entryType: undefined,
+                models: nested,
+              });
+            }
+          }
+          // Узлы типа "upgrade" и прочие — пропускаем
+        }
+        return result;
+      }
+      const models: Unit[] | undefined = depth === 0 && entryType === 'unit' && Array.isArray(item.children)
+        ? buildChildTree(item.children)
+        : undefined;
+
       return {
         id: item.id ?? item.name ?? '',
         name: item.name ?? '',
@@ -283,8 +318,12 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         costBands: hasVariableCost ? costBands : undefined,
         modelCount: hasVariableCost && costBands ? costBands[0].minModels : undefined,
         hasVariableCost,
+        entryType,
+        models: models && models.length > 0 ? models : undefined,
       };
-    });
+    };
+
+    return items.map(item => mapItem(item));
   } catch (err) {
     console.error('Failed to fetch units from API, using defaults:', err);
     return DEFAULT_UNITS;
