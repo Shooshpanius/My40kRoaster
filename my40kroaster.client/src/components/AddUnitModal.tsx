@@ -91,7 +91,8 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
           <div className="unit-info">
             <span className="unit-name">
               {unit.name}
-              {unit.hasVariableCost && <span className="unit-variable-badge">[M]</span>}
+              {unit.entryType === 'unit' && <span className="unit-type-badge">[U]</span>}
+              {unit.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
             </span>
             {displayCost !== undefined && (
               <span className="unit-cost">{displayCost} pts</span>

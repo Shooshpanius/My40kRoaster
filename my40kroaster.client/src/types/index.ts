@@ -42,6 +42,8 @@ export interface Unit {
   modelCount?: number;
   // Стоимость зависит от количества моделей в отряде
   hasVariableCost?: boolean;
+  // Тип записи из каталога: "unit" или "model"
+  entryType?: 'unit' | 'model';
 }
 
 export interface RosterUnit extends Unit {

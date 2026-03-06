@@ -273,6 +273,10 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         cost = costBands![0].cost;
       }
 
+      const entryType = item.entryType === 'unit' || item.entryType === 'model'
+        ? (item.entryType as 'unit' | 'model')
+        : undefined;
+
       return {
         id: item.id ?? item.name ?? '',
         name: item.name ?? '',
@@ -283,6 +287,7 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         costBands: hasVariableCost ? costBands : undefined,
         modelCount: hasVariableCost && costBands ? costBands[0].minModels : undefined,
         hasVariableCost,
+        entryType,
       };
     });
   } catch (err) {

@@ -610,17 +610,26 @@ body {
   font-size: 0.95rem;
 }
 
-.unit-variable-badge {
+.unit-variable-badge,
+.unit-type-badge {
   margin-left: 0.35rem;
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--gold, #c9a84c);
-  border: 1px solid var(--gold, #c9a84c);
   border-radius: 3px;
   padding: 0 0.25rem;
   vertical-align: middle;
   letter-spacing: 0.02em;
   opacity: 0.85;
+}
+
+.unit-variable-badge {
+  color: var(--gold, #c9a84c);
+  border: 1px solid var(--gold, #c9a84c);
+}
+
+.unit-type-badge {
+  color: var(--accent, #7ec8e3);
+  border: 1px solid var(--accent, #7ec8e3);
 }
 
 .unit-cost {
