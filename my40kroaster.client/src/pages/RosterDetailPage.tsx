@@ -341,6 +341,21 @@ export function RosterDetailPage() {
                         ))}
                       </ul>
                     )}
+                    {primaryUnit.entryType === 'unit' && primaryUnit.models && primaryUnit.models.length > 0 && (
+                      <ul className="unit-nested-models unit-nested-models--roster">
+                        {primaryUnit.models.map((model) => (
+                          <li key={model.id} className="unit-nested-model-item">
+                            <span className="unit-nested-model-name">
+                              {model.name}
+                              {model.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
+                            </span>
+                            {model.cost !== undefined && (
+                              <span className="unit-cost">{model.cost} pts</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   );
                 })}

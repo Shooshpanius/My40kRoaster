@@ -44,6 +44,8 @@ export interface Unit {
   hasVariableCost?: boolean;
   // Тип записи из каталога: "unit" или "model"
   entryType?: 'unit' | 'model';
+  // Вложенные модели (только для контейнеров entryType="unit")
+  models?: Unit[];
 }
 
 export interface RosterUnit extends Unit {

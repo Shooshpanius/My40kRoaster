@@ -238,7 +238,8 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       const n = Number(v);
       return isFinite(n) ? n : 0;
     };
-    return items.map((item) => {
+
+    const mapItem = (item: ApiUnitItem, depth = 0): Unit => {
       const cats = item.categories ?? item.unitCategories;
       const category =
         cats?.find(c => c.primary)?.name ??
@@ -277,6 +278,11 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         ? (item.entryType as 'unit' | 'model')
         : undefined;
 
+      // Вложенные модели для контейнеров типа "unit" (только один уровень вложенности)
+      const models: Unit[] | undefined = depth === 0 && entryType === 'unit' && Array.isArray(item.children)
+        ? item.children.filter(child => child.entryType === 'model').map(child => mapItem(child, depth + 1))
+        : undefined;
+
       return {
         id: item.id ?? item.name ?? '',
         name: item.name ?? '',
@@ -288,8 +294,11 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         modelCount: hasVariableCost && costBands ? costBands[0].minModels : undefined,
         hasVariableCost,
         entryType,
+        models: models && models.length > 0 ? models : undefined,
       };
-    });
+    };
+
+    return items.map(mapItem);
   } catch (err) {
     console.error('Failed to fetch units from API, using defaults:', err);
     return DEFAULT_UNITS;

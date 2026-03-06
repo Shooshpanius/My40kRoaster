@@ -771,6 +771,52 @@ body {
   flex-shrink: 0;
 }
 
+/* Вложенные модели внутри unit-контейнера (в модальном окне добавления) */
+.unit-nested-models {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.unit-item--nested {
+  padding-left: 1.5rem;
+  background: var(--surface2);
+}
+
+.unit-item--nested:last-child {
+  border-bottom: none;
+}
+
+/* Вложенные модели в карточке ростера */
+.unit-nested-models--roster {
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.unit-nested-model-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 1rem 0.4rem 2rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.unit-nested-model-item:last-child {
+  border-bottom: none;
+}
+
+.unit-nested-model-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .unit-group-attached {
   list-style: none;
   border-top: 1px solid var(--border);
