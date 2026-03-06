@@ -18,7 +18,7 @@ function renderRosterModels(models: Unit[]): React.ReactNode {
   return models.map((model) => {
     if (model.entryType === undefined && model.models && model.models.length > 0) {
       return (
-        <li key={model.id} className="unit-nested-model-item unit-nested-model-item--container">
+        <li key={model.id} className="unit-container-group">
           <span className="unit-container-label">— {model.name}</span>
           <ul className="unit-nested-models unit-nested-models--roster">
             {renderRosterModels(model.models)}
