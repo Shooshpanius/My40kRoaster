@@ -1,9 +1,10 @@
+import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import { useRosters } from '../contexts/RosterContext';
 import { useAuth } from '../contexts/AuthContext';
 import { AddUnitModal } from '../components/AddUnitModal';
-import type { RosterUnit, UnitGroup, UnitCostBand } from '../types';
+import type { RosterUnit, Unit, UnitGroup, UnitCostBand } from '../types';
 import * as api from '../services/api';
 
 const POINTS_OPTIONS = [500, 1000, 1500, 2000, 2500];
@@ -11,6 +12,32 @@ const POINTS_OPTIONS = [500, 1000, 1500, 2000, 2500];
 function getCostForModelCount(bands: UnitCostBand[], count: number): number {
   const band = bands.find(b => count >= b.minModels && count <= b.maxModels);
   return band?.cost ?? bands[0].cost;
+}
+
+function renderRosterModels(models: Unit[]): React.ReactNode {
+  return models.map((model) => {
+    if (model.entryType === undefined && model.models && model.models.length > 0) {
+      return (
+        <li key={model.id} className="unit-nested-model-item unit-nested-model-item--container">
+          <span className="unit-container-label">— {model.name}</span>
+          <ul className="unit-nested-models unit-nested-models--roster">
+            {renderRosterModels(model.models)}
+          </ul>
+        </li>
+      );
+    }
+    return (
+      <li key={model.id} className="unit-nested-model-item">
+        <span className="unit-nested-model-name">
+          {model.name}
+          {model.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
+        </span>
+        {model.cost !== undefined && (
+          <span className="unit-cost">{model.cost} pts</span>
+        )}
+      </li>
+    );
+  });
 }
 
 function loadLocalUnits(rosterId: string): UnitGroup[] {
@@ -343,17 +370,7 @@ export function RosterDetailPage() {
                     )}
                     {primaryUnit.entryType === 'unit' && primaryUnit.models && primaryUnit.models.length > 0 && (
                       <ul className="unit-nested-models unit-nested-models--roster">
-                        {primaryUnit.models.map((model) => (
-                          <li key={model.id} className="unit-nested-model-item">
-                            <span className="unit-nested-model-name">
-                              {model.name}
-                              {model.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
-                            </span>
-                            {model.cost !== undefined && (
-                              <span className="unit-cost">{model.cost} pts</span>
-                            )}
-                          </li>
-                        ))}
+                        {renderRosterModels(primaryUnit.models)}
                       </ul>
                     )}
                   </div>
