@@ -199,11 +199,12 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
     if (!res.ok) throw new Error('Failed to fetch units');
     const data = await res.json();
 
-    // Собираем все записи с parentId === null — это и есть отряды (независимо от стоимости)
+    // Собираем корневые отряды: entryType "unit" или "model" без родительского unit-контейнера.
+    // parentId === null означает корневую запись каталога; берём только unit и model-записи.
     function collectUnits(nodes: ApiUnitItem[]): ApiUnitItem[] {
       const result: ApiUnitItem[] = [];
       for (const node of nodes) {
-        if (node.parentId === null) {
+        if (node.parentId === null && (node.entryType === 'unit' || node.entryType === 'model')) {
           result.push(node);
         }
         if (Array.isArray(node.children) && node.children.length > 0) {

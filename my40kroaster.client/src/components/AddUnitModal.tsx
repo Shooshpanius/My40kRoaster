@@ -37,15 +37,9 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
 
   const filteredUnits = attachMode ? units.filter(u => u.isLeader) : units;
 
-  const visibleUnits = (allowLegends
+  const visibleUnits = allowLegends
     ? filteredUnits
-    : filteredUnits.filter(u => !u.name.toLowerCase().includes('[legends]'))
-  ).filter(u => {
-    const cat = u.category?.toLowerCase();
-    if (cat === 'other') return false;
-    if (cat === 'upgrade') return false;
-    return true;
-  });
+    : filteredUnits.filter(u => !u.name.toLowerCase().includes('[legends]'));
 
   const grouped = visibleUnits.reduce<Record<string, Unit[]>>((acc, unit) => {
     if (!acc[unit.category]) acc[unit.category] = [];
@@ -72,7 +66,10 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     : [];
 
   const renderUnitItem = (unit: Unit) => {
-    const hasBands = unit.costBands && unit.costBands.length > 1;
+    // Показываем элементы управления количеством моделей, если есть несколько диапазонов
+    // стоимости ИЛИ единственный диапазон допускает разное количество моделей (min < max).
+    const hasBands = !!(unit.costBands && unit.costBands.length >= 1 &&
+      (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? 0)));
     const minModels = hasBands ? unit.costBands![0].minModels : 1;
     const maxModels = hasBands ? unit.costBands![unit.costBands!.length - 1].maxModels : 1;
     const modelCount = hasBands ? (modelCounts[unit.id] ?? minModels) : unit.modelCount;
