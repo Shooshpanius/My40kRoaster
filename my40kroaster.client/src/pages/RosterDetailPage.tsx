@@ -19,10 +19,12 @@ function renderRosterModels(models: Unit[]): React.ReactNode {
     if (model.entryType === undefined && model.models && model.models.length > 0) {
       return (
         <li key={model.id} className="unit-container-group">
-          <span className="unit-container-label">— {model.name}</span>
-          <ul className="unit-nested-models unit-nested-models--roster">
-            {renderRosterModels(model.models)}
-          </ul>
+          <details className="unit-container-details">
+            <summary className="unit-container-label">— {model.name}</summary>
+            <ul className="unit-nested-models unit-nested-models--roster">
+              {renderRosterModels(model.models)}
+            </ul>
+          </details>
         </li>
       );
     }

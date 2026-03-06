@@ -779,14 +779,39 @@ body {
   list-style: none;
 }
 
-.unit-container-label {
+.unit-container-details {
   display: block;
+}
+
+.unit-container-label {
+  display: flex;
+  align-items: center;
   padding: 0.3rem 0.75rem 0.3rem 1.5rem;
   font-size: 0.82rem;
   color: var(--text-muted);
   font-style: italic;
   border-bottom: 1px solid var(--border);
   background: var(--surface2);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.unit-container-label::before {
+  content: '▸';
+  margin-right: 0.35rem;
+  font-style: normal;
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+
+.unit-container-details[open] > .unit-container-label::before {
+  transform: rotate(90deg);
+}
+
+.unit-container-label::-webkit-details-marker {
+  display: none;
 }
 
 .unit-container-group .unit-nested-models {
