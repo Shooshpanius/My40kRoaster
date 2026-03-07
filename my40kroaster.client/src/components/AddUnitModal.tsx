@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Unit, UnitGroup, UnitCostBand } from '../types';
-import { getUnits } from '../services/api';
+import { getUnits, UNALIGNED_FORCES_ID } from '../services/api';
 
 interface AddUnitModalProps {
   factionId: string;
@@ -39,7 +39,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
 
   const visibleUnits = allowLegends
     ? filteredUnits
-    : filteredUnits.filter(u => !u.name.toLowerCase().includes('[legends]'));
+    : filteredUnits.filter(u => factionId !== UNALIGNED_FORCES_ID && !u.name.toLowerCase().includes('[legends]'));
 
   const grouped = visibleUnits.reduce<Record<string, Unit[]>>((acc, unit) => {
     if (!acc[unit.category]) acc[unit.category] = [];

@@ -3,6 +3,8 @@ import type { Faction, Unit, UnitCostBand } from '../types';
 const API_BASE = '/api';
 const WH40K_API = '/api/bsdata';
 
+export const UNALIGNED_FORCES_ID = '581a-46b9-5b86-44b7';
+
 // Auth
 export async function loginWithGoogle(idToken: string) {
   const res = await fetch(`${API_BASE}/auth/google`, {
