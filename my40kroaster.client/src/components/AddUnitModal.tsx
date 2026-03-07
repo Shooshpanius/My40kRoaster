@@ -39,7 +39,11 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
 
   const visibleUnits = allowLegends
     ? filteredUnits
-    : filteredUnits.filter(u => factionId !== UNALIGNED_FORCES_ID && !u.name.toLowerCase().includes('[legends]'));
+    : filteredUnits.filter(u =>
+        factionId !== UNALIGNED_FORCES_ID &&
+        !u.isAllied &&
+        !u.name.toLowerCase().includes('[legends]')
+      );
 
   const grouped = visibleUnits.reduce<Record<string, Unit[]>>((acc, unit) => {
     if (!acc[unit.category]) acc[unit.category] = [];
