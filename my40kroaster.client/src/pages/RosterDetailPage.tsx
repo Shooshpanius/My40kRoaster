@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { AddUnitModal } from '../components/AddUnitModal';
 import type { RosterUnit, Unit, UnitGroup, UnitCostBand } from '../types';
 import * as api from '../services/api';
+import { UNALIGNED_FORCES_ID } from '../services/api';
 
 const POINTS_OPTIONS = [500, 1000, 1500, 2000, 2500];
 
@@ -75,9 +76,10 @@ export function RosterDetailPage() {
   );
   const remainingPoints = roster ? roster.pointsLimit - totalCost : 0;
 
-  const hasLegendsUnits = unitGroups.some(group =>
-    group.units.some(u => u.name.toLowerCase().includes('[legends]'))
-  );
+  const hasLegendsUnits = (roster?.factionId === UNALIGNED_FORCES_ID && unitGroups.some(g => g.units.length > 0)) ||
+    unitGroups.some(group =>
+      group.units.some(u => u.name.toLowerCase().includes('[legends]'))
+    );
 
   useEffect(() => {
     if (!id) return;

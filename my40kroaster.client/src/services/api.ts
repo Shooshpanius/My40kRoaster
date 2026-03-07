@@ -3,6 +3,8 @@ import type { Faction, Unit, UnitCostBand } from '../types';
 const API_BASE = '/api';
 const WH40K_API = '/api/bsdata';
 
+export const UNALIGNED_FORCES_ID = '581a-46b9-5b86-44b7';
+
 // Auth
 export async function loginWithGoogle(idToken: string) {
   const res = await fetch(`${API_BASE}/auth/google`, {
@@ -150,6 +152,10 @@ interface ApiUnitItem {
   children?: ApiUnitItem[];
   // Идентификатор родительского узла; null означает корневой юнит (отряд)
   parentId?: string | null;
+  // Идентификатор каталога, из которого пришёл узел (помогает определить Unaligned Forces)
+  catalogueId?: string;
+  // Внутренний флаг: юнит получен из раздела «Allied Units» связанного каталога
+  _isAllied?: boolean;
 }
 
 const DEFAULT_FACTIONS: Faction[] = [
@@ -201,14 +207,27 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
 
     // Собираем корневые отряды: entryType "unit" или "model" без родительского unit-контейнера.
     // parentId === null означает корневую запись каталога; берём только unit и model-записи.
-    function collectUnits(nodes: ApiUnitItem[]): ApiUnitItem[] {
+    // insideAllied=true означает, что мы находимся внутри раздела связанного каталога
+    // (например «Allied Units» или раздела с catalogueId Unaligned Forces).
+    function collectUnits(nodes: ApiUnitItem[], insideAllied = false): ApiUnitItem[] {
       const result: ApiUnitItem[] = [];
       for (const node of nodes) {
+        // Определяем: является ли текущий узел или его контекст разделом «союзных» юнитов.
+        // Критерии:
+        //   1. Уже находимся внутри Allied-раздела (флаг от родителя)
+        //   2. Узел-контейнер (не unit/model) с именем, содержащим «allied» (без учёта регистра)
+        //   3. catalogueId совпадает с Unaligned Forces
+        const isAlliedSection = insideAllied
+          || (!node.entryType && node.name?.toLowerCase().includes('allied'))
+          || node.catalogueId === UNALIGNED_FORCES_ID;
+
         if (node.parentId === null && (node.entryType === 'unit' || node.entryType === 'model')) {
-          result.push(node);
+          // Для unit/model-узла !node.entryType всегда false, поэтому isAlliedSection эквивалентно:
+          // insideAllied || node.catalogueId === UNALIGNED_FORCES_ID
+          result.push(isAlliedSection ? { ...node, _isAllied: true } : node);
         }
         if (Array.isArray(node.children) && node.children.length > 0) {
-          result.push(...collectUnits(node.children));
+          result.push(...collectUnits(node.children, isAlliedSection));
         }
       }
       return result;
@@ -320,6 +339,7 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         hasVariableCost,
         entryType,
         models: models && models.length > 0 ? models : undefined,
+        isAllied: item._isAllied === true,
       };
     };
 

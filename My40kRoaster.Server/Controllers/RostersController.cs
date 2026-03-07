@@ -17,10 +17,23 @@ namespace My40kRoaster.Server.Controllers
         private static readonly int[] AllowedPointsLimits = [500, 1000, 1500, 2000, 2500];
         private string GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
-        private static bool HasLegendsUnits(string unitsJson)
+        private const string UnalignedForcesId = "581a-46b9-5b86-44b7";
+
+        private static bool HasLegendsUnits(string unitsJson, string? factionId = null)
         {
             try
             {
+                if (factionId == UnalignedForcesId)
+                {
+                    var factionDoc = JsonDocument.Parse(unitsJson);
+                    foreach (var group in factionDoc.RootElement.EnumerateArray())
+                    {
+                        if (group.TryGetProperty("units", out var unitsEl) && unitsEl.GetArrayLength() > 0)
+                            return true;
+                    }
+                    return false;
+                }
+
                 var doc = JsonDocument.Parse(unitsJson);
                 foreach (var group in doc.RootElement.EnumerateArray())
                 {
@@ -119,7 +132,7 @@ namespace My40kRoaster.Server.Controllers
             var userId = GetUserId();
             var roster = await db.Rosters.FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId);
             if (roster == null) return NotFound();
-            if (!request.AllowLegends && HasLegendsUnits(roster.UnitsJson))
+            if (!request.AllowLegends && HasLegendsUnits(roster.UnitsJson, roster.FactionId))
                 return BadRequest("Нельзя отключить опцию [LEG]: в ростере есть отряды с [Legends].");
             roster.Name = request.Name;
             roster.PointsLimit = request.PointsLimit;

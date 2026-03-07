@@ -46,6 +46,8 @@ export interface Unit {
   entryType?: 'unit' | 'model';
   // Вложенные модели (только для контейнеров entryType="unit")
   models?: Unit[];
+  // Юнит из раздела «Allied Units» (союзные войска из связанного каталога)
+  isAllied?: boolean;
 }
 
 export interface RosterUnit extends Unit {
