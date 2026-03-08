@@ -119,7 +119,8 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
 
     // Случай: отряд [U] с несколькими типами моделей (например, Ironstrider Ballistarii)
     // — контейнерный узел задаёт суммарный min/max, каждый [M] имеет фиксированную стоимость
-    const multiContainer = !isNested && unit.entryType === 'unit'
+    // Если у [U] есть собственные costBands (Poxwalkers-подобный), пропускаем этот случай
+    const multiContainer = !isNested && unit.entryType === 'unit' && !unit.costBands?.length
       ? findMultiModelContainer(unit.models)
       : undefined;
     if (multiContainer) {
