@@ -45,8 +45,23 @@ function findMultiModelContainer(models?: Unit[]): Unit | undefined {
   return undefined;
 }
 
-// Вычисляет эффективный максимум для одного типа модели с учётом суммарного ограничения
-function calcEffectiveMax(modelMaxInRoster: number | undefined, maxTotal: number, otherTotal: number): number {
+// Вычисляет эффективный максимум для одного типа модели с учётом суммарного ограничения.
+// Если maxUnitSize / modelMaxInRoster — целое число N > 1, применяется правило «1 на каждые N моделей»:
+//   effectiveMax = floor(totalCount / N), ограниченное абсолютным лимитом и оставшимся местом в контейнере.
+function calcEffectiveMax(
+  modelMaxInRoster: number | undefined,
+  maxTotal: number,
+  otherTotal: number,
+  totalCount?: number,
+  maxUnitSize?: number,
+): number {
+  if (modelMaxInRoster !== undefined && totalCount !== undefined && maxUnitSize !== undefined) {
+    const perN = maxUnitSize / modelMaxInRoster;
+    if (Number.isInteger(perN) && perN > 1) {
+      const allowedByRatio = Math.min(Math.floor(totalCount / perN), modelMaxInRoster);
+      return Math.min(allowedByRatio, maxTotal - otherTotal);
+    }
+  }
   return Math.min(modelMaxInRoster ?? maxTotal, maxTotal - otherTotal);
 }
 
@@ -189,7 +204,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
             {containerModels.map(model => {
               const count = modelCounts[model.id] ?? 0;
               const otherTotal = containerTotal - count;
-              const effectiveMax = calcEffectiveMax(model.maxInRoster, maxContainer, otherTotal);
+              const effectiveMax = calcEffectiveMax(model.maxInRoster, maxContainer, otherTotal, totalCount, maxContainer + mandatoryCount);
               return (
                 <li key={model.id} className="unit-nested-model-item">
                   <span className="unit-nested-model-name">
