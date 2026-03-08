@@ -19,6 +19,20 @@ function getCostForModelCount(bands: UnitCostBand[], count: number): number {
   return band?.cost ?? bands[0].cost;
 }
 
+// Рекурсивно ищет первый дочерний [M] с диапазонами стоимости (через промежуточные контейнеры)
+function findChildModelWithBands(models?: Unit[]): Unit | undefined {
+  if (!models) return undefined;
+  for (const m of models) {
+    if (m.entryType === 'model' && m.costBands && m.costBands.length >= 1 &&
+      (m.costBands.length > 1 || (m.costBands[0]?.minModels ?? 0) < (m.costBands[0]?.maxModels ?? 0))) {
+      return m;
+    }
+    const found = findChildModelWithBands(m.models);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMode, remainingPoints, currentUnitGroups, allowLegends }: AddUnitModalProps) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,17 +100,28 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
       );
     }
 
-    // Показываем элементы управления количеством моделей для любых записей с диапазонами стоимости:
-    // несколько диапазонов ИЛИ единственный диапазон допускает разное количество (min < max).
-    // entryType может быть как "model", так и "unit" (например, Poxwalkers — entryType="unit" с costTiers).
-    const hasBands = !!(unit.costBands && unit.costBands.length >= 1 &&
+    // Контролы количества моделей — только для записей entryType="model" с диапазонами стоимости.
+    // entryType="unit" (например, Poxwalkers) передаёт costBands дочерним [M] через api.ts buildChildTree.
+    const hasBands = unit.entryType === 'model' && !!(unit.costBands && unit.costBands.length >= 1 &&
       (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? 0)));
     const minModels = hasBands ? unit.costBands![0].minModels : 1;
     const maxModels = hasBands ? unit.costBands![unit.costBands!.length - 1].maxModels : 1;
     const modelCount = hasBands ? (modelCounts[unit.id] ?? minModels) : unit.modelCount;
+
+    // Для [U] с дочерними [M] с costBands: берём count из дочерней модели для расчёта стоимости
+    const childModelForCount = !hasBands && unit.entryType === 'unit'
+      ? findChildModelWithBands(unit.models)
+      : undefined;
+    const childModelBands = childModelForCount?.costBands;
+    const childModelCount = childModelForCount && childModelBands
+      ? (modelCounts[childModelForCount.id] ?? childModelBands[0].minModels)
+      : undefined;
+
     const displayCost = hasBands && modelCount !== undefined
       ? getCostForModelCount(unit.costBands!, modelCount)
-      : unit.cost;
+      : (childModelForCount && childModelBands && childModelCount !== undefined
+        ? getCostForModelCount(childModelBands, childModelCount)
+        : unit.cost);
 
     const setCount = (val: number) => {
       const clamped = Math.min(maxModels, Math.max(minModels, val));
@@ -128,7 +153,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
               )}
               <button
                 className="btn btn-primary btn-sm"
-                onClick={() => onAdd({ ...unit, cost: displayCost, modelCount: hasBands ? (modelCounts[unit.id] ?? minModels) : undefined })}
+                onClick={() => onAdd({ ...unit, cost: displayCost, modelCount: hasBands ? (modelCounts[unit.id] ?? minModels) : childModelCount })}
                 disabled={!canAdd || limitReached}
                 aria-label={attachMode ? 'Присоединить' : 'Добавить'}
               >

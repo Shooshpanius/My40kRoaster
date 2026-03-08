@@ -15,7 +15,12 @@ function getCostForModelCount(bands: UnitCostBand[], count: number): number {
   return band?.cost ?? bands[0].cost;
 }
 
-function renderRosterModels(models: Unit[]): React.ReactNode {
+function renderRosterModels(
+  models: Unit[],
+  parentCostBands?: UnitCostBand[],
+  parentModelCount?: number,
+  onParentCountChange?: (val: number) => void
+): React.ReactNode {
   return models.map((model) => {
     if (model.entryType === undefined && model.models && model.models.length > 0) {
       return (
@@ -23,12 +28,24 @@ function renderRosterModels(models: Unit[]): React.ReactNode {
           <details className="unit-container-details">
             <summary className="unit-container-label">— {model.name}</summary>
             <ul className="unit-nested-models unit-nested-models--roster">
-              {renderRosterModels(model.models)}
+              {renderRosterModels(model.models, parentCostBands, parentModelCount, onParentCountChange)}
             </ul>
           </details>
         </li>
       );
     }
+    // Для [M]: собственные costBands (если есть) или унаследованные от родительского [U]
+    const effectiveBands = model.entryType === 'model'
+      ? (model.costBands?.length ? model.costBands : parentCostBands)
+      : undefined;
+    const hasBands = !!(effectiveBands && (
+      effectiveBands.length > 1 ||
+      (effectiveBands[0]?.minModels ?? 0) < (effectiveBands[0]?.maxModels ?? 0)
+    ));
+    const minM = hasBands ? (effectiveBands?.[0].minModels ?? 0) : 0;
+    const maxM = hasBands ? (effectiveBands?.[effectiveBands.length - 1].maxModels ?? 0) : 0;
+    // Текущий count берётся из primaryUnit.modelCount (хранится на уровне [U])
+    const currentCount = hasBands ? (parentModelCount ?? minM) : undefined;
     return (
       <li key={model.id} className="unit-nested-model-item">
         <span className="unit-nested-model-name">
@@ -37,6 +54,37 @@ function renderRosterModels(models: Unit[]): React.ReactNode {
         </span>
         {model.cost !== undefined && (
           <span className="unit-cost">{model.cost} pts</span>
+        )}
+        {hasBands && currentCount !== undefined && onParentCountChange && (
+          <div className="unit-model-count">
+            <span className="unit-model-count-label">Моделей:</span>
+            <button
+              type="button"
+              className="unit-model-count-btn"
+              onClick={() => onParentCountChange(currentCount - 1)}
+              disabled={currentCount <= minM}
+              aria-label="Уменьшить количество моделей"
+            >−</button>
+            <input
+              type="number"
+              className="unit-model-count-input"
+              value={currentCount}
+              min={minM}
+              max={maxM}
+              onChange={e => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val)) onParentCountChange(val);
+              }}
+              aria-label="Количество моделей"
+            />
+            <button
+              type="button"
+              className="unit-model-count-btn"
+              onClick={() => onParentCountChange(currentCount + 1)}
+              disabled={currentCount >= maxM}
+              aria-label="Увеличить количество моделей"
+            >+</button>
+          </div>
         )}
       </li>
     );
@@ -240,7 +288,7 @@ export function RosterDetailPage() {
                             <span className="unit-cost">{primaryUnit.cost} pts</span>
                           )}
                         </div>
-                        {primaryUnit.costBands &&
+                        {primaryUnit.entryType === 'model' && primaryUnit.costBands &&
                           (primaryUnit.costBands.length > 1 || (primaryUnit.costBands[0]?.minModels ?? 0) < (primaryUnit.costBands[0]?.maxModels ?? 0)) && (() => {
                           const bands = primaryUnit.costBands!;
                           const minM = bands[0].minModels;
@@ -346,8 +394,8 @@ export function RosterDetailPage() {
                     {group.units.slice(1).length > 0 && (
                       <ul className="unit-group-attached">
                         {group.units.slice(1).map((unit) => {
-                          // Вычисляем hasBands для присоединённого юнита (любой entryType с costBands)
-                          const hasBands = !!(unit.costBands && unit.costBands.length >= 1 &&
+                          // Контролы только для присоединённых [M] с диапазонами стоимости
+                          const hasBands = unit.entryType === 'model' && !!(unit.costBands && unit.costBands.length >= 1 &&
                             (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? 0)));
                           const bands = hasBands ? unit.costBands! : null;
                           const minM = bands ? bands[0].minModels : 1;
@@ -429,11 +477,35 @@ export function RosterDetailPage() {
                         })}
                       </ul>
                     )}
-                    {primaryUnit.entryType === 'unit' && primaryUnit.models && primaryUnit.models.length > 0 && (
-                      <ul className="unit-nested-models unit-nested-models--roster">
-                        {renderRosterModels(primaryUnit.models)}
-                      </ul>
-                    )}
+                    {primaryUnit.entryType === 'unit' && primaryUnit.models && primaryUnit.models.length > 0 && (() => {
+                      // Передаём costBands и callback в renderRosterModels,
+                      // чтобы дочерние [M] могли показать контролы и обновить modelCount у [U]
+                      const bands = primaryUnit.costBands;
+                      const minM = bands?.[0].minModels ?? 0;
+                      const maxM = bands ? bands[bands.length - 1].maxModels : 0;
+                      const currentCount = primaryUnit.modelCount ?? minM;
+                      const handleCountChange = bands ? (val: number) => {
+                        const clamped = Math.min(maxM, Math.max(minM, val));
+                        const newCost = getCostForModelCount(bands, clamped);
+                        const updated = unitGroups.map(g => g.id === group.id
+                          ? {
+                              ...g,
+                              units: g.units.map((u, idx) => idx === 0
+                                ? { ...u, modelCount: clamped, cost: newCost }
+                                : u
+                              )
+                            }
+                          : g
+                        );
+                        setUnitGroups(updated);
+                        persistUnits(updated);
+                      } : undefined;
+                      return (
+                        <ul className="unit-nested-models unit-nested-models--roster">
+                          {renderRosterModels(primaryUnit.models, bands, currentCount, handleCountChange)}
+                        </ul>
+                      );
+                    })()}
                   </div>
                   );
                 })}
