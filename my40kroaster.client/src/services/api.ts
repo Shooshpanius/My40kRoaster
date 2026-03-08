@@ -300,14 +300,27 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       // Строим дерево дочерних узлов для контейнеров типа "unit".
       // Сохраняем промежуточные контейнеры (entryType=null) как узлы дерева,
       // чтобы в UI отображалась полная иерархия вложенности через children.
-      function buildChildTree(children: ApiUnitItem[]): Unit[] {
+      // parentCostBands — диапазоны родительского [U], передаются дочерним [M] без собственных costTiers
+      // (пример: Poxwalkers [U] имеет costTiers, а дочерний [M] "Poxwalker" — нет).
+      function buildChildTree(children: ApiUnitItem[], parentCostBands?: UnitCostBand[]): Unit[] {
         const result: Unit[] = [];
         for (const child of children) {
           if (child.entryType === 'model') {
-            result.push(mapItem(child, depth + 1));
+            const modelUnit = mapItem(child, depth + 1);
+            // Если у [M] нет собственных costBands, но у родительского [U] есть — наследуем
+            if (!modelUnit.costBands && parentCostBands && parentCostBands.length > 0) {
+              result.push({
+                ...modelUnit,
+                costBands: parentCostBands,
+                hasVariableCost: true,
+                modelCount: parentCostBands[0]?.minModels ?? 0,
+              });
+            } else {
+              result.push(modelUnit);
+            }
           } else if (!child.entryType && Array.isArray(child.children) && child.children.length > 0) {
-            // Промежуточный контейнер — рекурсивно обходим его children
-            const nested = buildChildTree(child.children);
+            // Промежуточный контейнер — передаём parentCostBands дальше по дереву
+            const nested = buildChildTree(child.children, parentCostBands);
             if (nested.length > 0) {
               result.push({
                 id: child.id ?? child.name ?? '',
@@ -324,7 +337,7 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         return result;
       }
       const models: Unit[] | undefined = depth === 0 && entryType === 'unit' && Array.isArray(item.children)
-        ? buildChildTree(item.children)
+        ? buildChildTree(item.children, hasVariableCost ? costBands : undefined)
         : undefined;
 
       return {
