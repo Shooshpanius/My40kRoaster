@@ -240,8 +240,9 @@ export function RosterDetailPage() {
                             <span className="unit-cost">{primaryUnit.cost} pts</span>
                           )}
                         </div>
-                        {primaryUnit.entryType === 'model' && primaryUnit.costBands && primaryUnit.costBands.length > 1 && (() => {
-                          const bands = primaryUnit.costBands;
+                        {primaryUnit.entryType === 'model' && primaryUnit.costBands &&
+                          (primaryUnit.costBands.length > 1 || (primaryUnit.costBands[0]?.minModels ?? 0) < (primaryUnit.costBands[0]?.maxModels ?? 0)) && (() => {
+                          const bands = primaryUnit.costBands!;
                           const minM = bands[0].minModels;
                           const maxM = bands[bands.length - 1].maxModels;
                           const currentCount = primaryUnit.modelCount ?? minM;
@@ -344,7 +345,31 @@ export function RosterDetailPage() {
                     </div>
                     {group.units.slice(1).length > 0 && (
                       <ul className="unit-group-attached">
-                        {group.units.slice(1).map((unit) => (
+                        {group.units.slice(1).map((unit) => {
+                          // Вычисляем hasBands для присоединённого юнита [M]
+                          const hasBands = unit.entryType === 'model' && !!(unit.costBands && unit.costBands.length >= 1 &&
+                            (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? 0)));
+                          const bands = hasBands ? unit.costBands! : null;
+                          const minM = bands ? bands[0].minModels : 1;
+                          const maxM = bands ? bands[bands.length - 1].maxModels : 1;
+                          const currentCount = unit.modelCount ?? minM;
+                          const setAttachedCount = (val: number) => {
+                            const clamped = Math.min(maxM, Math.max(minM, val));
+                            const newCost = bands ? getCostForModelCount(bands, clamped) : unit.cost;
+                            const updated = unitGroups.map(g => g.id === group.id
+                              ? {
+                                  ...g,
+                                  units: g.units.map(u => u.entryId === unit.entryId
+                                    ? { ...u, modelCount: clamped, cost: newCost }
+                                    : u
+                                  )
+                                }
+                              : g
+                            );
+                            setUnitGroups(updated);
+                            persistUnits(updated);
+                          };
+                          return (
                           <li key={unit.entryId} className="unit-group-attached-item">
                             <div className="unit-group-attached-info">
                               <span className="unit-group-attached-name">{unit.name}</span>
@@ -355,6 +380,37 @@ export function RosterDetailPage() {
                                 )}
                               </div>
                             </div>
+                            {hasBands && bands && (
+                              <div className="unit-model-count">
+                                <span className="unit-model-count-label">Моделей:</span>
+                                <button
+                                  type="button"
+                                  className="unit-model-count-btn"
+                                  onClick={() => setAttachedCount(currentCount - 1)}
+                                  disabled={currentCount <= minM}
+                                  aria-label="Уменьшить количество моделей"
+                                >−</button>
+                                <input
+                                  type="number"
+                                  className="unit-model-count-input"
+                                  value={currentCount}
+                                  min={minM}
+                                  max={maxM}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value, 10);
+                                    if (!isNaN(val)) setAttachedCount(val);
+                                  }}
+                                  aria-label="Количество моделей"
+                                />
+                                <button
+                                  type="button"
+                                  className="unit-model-count-btn"
+                                  onClick={() => setAttachedCount(currentCount + 1)}
+                                  disabled={currentCount >= maxM}
+                                  aria-label="Увеличить количество моделей"
+                                >+</button>
+                              </div>
+                            )}
                             <button
                               className="btn btn-danger btn-sm"
                               onClick={() => {
@@ -369,7 +425,8 @@ export function RosterDetailPage() {
                               ✕
                             </button>
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     )}
                     {primaryUnit.entryType === 'unit' && primaryUnit.models && primaryUnit.models.length > 0 && (
