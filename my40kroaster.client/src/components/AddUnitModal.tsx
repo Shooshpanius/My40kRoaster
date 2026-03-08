@@ -86,9 +86,10 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
       );
     }
 
-    // Показываем элементы управления количеством моделей только для записей entryType="model",
-    // если есть несколько диапазонов стоимости ИЛИ единственный диапазон допускает разное количество (min < max).
-    const hasBands = unit.entryType === 'model' && !!(unit.costBands && unit.costBands.length >= 1 &&
+    // Показываем элементы управления количеством моделей для любых записей с диапазонами стоимости:
+    // несколько диапазонов ИЛИ единственный диапазон допускает разное количество (min < max).
+    // entryType может быть как "model", так и "unit" (например, Poxwalkers — entryType="unit" с costTiers).
+    const hasBands = !!(unit.costBands && unit.costBands.length >= 1 &&
       (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? 0)));
     const minModels = hasBands ? unit.costBands![0].minModels : 1;
     const maxModels = hasBands ? unit.costBands![unit.costBands!.length - 1].maxModels : 1;

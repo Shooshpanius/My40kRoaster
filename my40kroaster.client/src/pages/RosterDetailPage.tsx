@@ -240,7 +240,7 @@ export function RosterDetailPage() {
                             <span className="unit-cost">{primaryUnit.cost} pts</span>
                           )}
                         </div>
-                        {primaryUnit.entryType === 'model' && primaryUnit.costBands &&
+                        {primaryUnit.costBands &&
                           (primaryUnit.costBands.length > 1 || (primaryUnit.costBands[0]?.minModels ?? 0) < (primaryUnit.costBands[0]?.maxModels ?? 0)) && (() => {
                           const bands = primaryUnit.costBands!;
                           const minM = bands[0].minModels;
@@ -346,8 +346,8 @@ export function RosterDetailPage() {
                     {group.units.slice(1).length > 0 && (
                       <ul className="unit-group-attached">
                         {group.units.slice(1).map((unit) => {
-                          // Вычисляем hasBands для присоединённого юнита [M]
-                          const hasBands = unit.entryType === 'model' && !!(unit.costBands && unit.costBands.length >= 1 &&
+                          // Вычисляем hasBands для присоединённого юнита (любой entryType с costBands)
+                          const hasBands = !!(unit.costBands && unit.costBands.length >= 1 &&
                             (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? 0)));
                           const bands = hasBands ? unit.costBands! : null;
                           const minM = bands ? bands[0].minModels : 1;
