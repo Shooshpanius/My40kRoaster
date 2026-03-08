@@ -126,7 +126,8 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
 
     // Случай 3: Blightlord-подобный — несколько типов моделей + стоимость по costBands на [U]
     // Отличие от Ironstrider: стоимость определяется по суммарному числу моделей через costBands, а не по сумме индивидуальных стоимостей
-    if (multiContainerForAll && unit.costBands?.length) {
+    // Отличие от Poxwalkers (Case 2): в контейнере несколько разных типов моделей
+    if (multiContainerForAll && unit.costBands?.length && (multiContainerForAll.models?.length ?? 0) > 1) {
       const containerModels = multiContainerForAll.models ?? [];
       const minContainer = multiContainerForAll.minCount ?? 1;
       const maxContainer = multiContainerForAll.maxCount ?? 99;

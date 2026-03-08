@@ -499,7 +499,8 @@ export function RosterDetailPage() {
 
                       // Случай 3: Blightlord-подобный — несколько типов моделей + costBands на [U]
                       // Стоимость определяется по суммарному числу моделей через costBands
-                      if (multiContainerForAll && primaryUnit.costBands?.length) {
+                      // Отличие от Poxwalkers (Case 2): в контейнере несколько разных типов моделей
+                      if (multiContainerForAll && primaryUnit.costBands?.length && (multiContainerForAll.models?.length ?? 0) > 1) {
                         const containerModels = multiContainerForAll.models ?? [];
                         const minContainer = multiContainerForAll.minCount ?? 1;
                         const maxContainer = multiContainerForAll.maxCount ?? 99;
