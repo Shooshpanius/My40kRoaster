@@ -496,7 +496,10 @@ export function RosterDetailPage() {
                     )}
                     {primaryUnit.entryType === 'unit' && primaryUnit.models && primaryUnit.models.length > 0 && (() => {
                       // Случай 1: отряд с несколькими типами моделей (Ironstrider-подобная структура)
-                      const multiContainer = findMultiModelContainer(primaryUnit.models);
+                      // Если у [U] есть собственные costBands (Poxwalkers-подобный), пропускаем этот случай
+                      const multiContainer = !primaryUnit.costBands?.length
+                        ? findMultiModelContainer(primaryUnit.models)
+                        : undefined;
                       if (multiContainer) {
                         const containerModels = multiContainer.models ?? [];
                         const minTotal = multiContainer.minCount ?? 1;
