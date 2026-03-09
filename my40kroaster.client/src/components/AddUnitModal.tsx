@@ -48,25 +48,44 @@ function findMultiModelContainer(models?: Unit[]): Unit | undefined {
 // Определяет, является ли модель «ведущей» — не зависит от числа других моделей через правило 1:N.
 // Ведущие модели определяют максимальное количество зависимых (например, основные Blightlord Terminators).
 // maxUnitSize — полный размер отряда (maxContainer + mandatoryCount), как в calcEffectiveMax.
-function isPrimaryContainerModel(modelMaxInRoster: number | undefined, maxUnitSize: number): boolean {
+// minUnitSize — минимальный размер отряда (minContainer + mandatoryCount).
+// Если perN > maxUnitSize/2, модель доступна «только при минимальном размере» (не правило «1 на N»),
+// и должна быть классифицирована как ведущая (например, Blightlord Terminator w/ plague spewer and CCW).
+function isPrimaryContainerModel(modelMaxInRoster: number | undefined, maxUnitSize: number, minUnitSize?: number): boolean {
   if (modelMaxInRoster === undefined) return true;
   const perN = maxUnitSize / modelMaxInRoster;
-  return !(Number.isInteger(perN) && perN > 1);
+  if (Number.isInteger(perN) && perN > 1) {
+    // Модели, у которых perN > maxUnitSize/2, — это «только при минимальном размере отряда».
+    // Они не следуют правилу «1 на N» и должны считаться ведущими.
+    if (minUnitSize !== undefined && perN > maxUnitSize / 2) return true;
+    return false;
+  }
+  return true;
 }
 
 // Вычисляет эффективный максимум для одного типа модели с учётом суммарного ограничения.
-// Если maxUnitSize / modelMaxInRoster — целое число N > 1, применяется правило «1 на каждые N моделей»:
-//   effectiveMax = floor(totalCount / N), ограниченное абсолютным лимитом и оставшимся местом в контейнере.
+// Если maxUnitSize / modelMaxInRoster — целое число N > 1, применяется одно из двух правил:
+//   1. «Только при минимальном размере отряда» (perN > maxUnitSize/2): модель доступна
+//      лишь когда totalCount <= minUnitSize (например, Blightlord Terminator w/ plague spewer and CCW).
+//   2. «1 на каждые N моделей» (perN <= maxUnitSize/2):
+//      effectiveMax = floor(totalCount / N), ограниченное абсолютным лимитом и оставшимся местом.
 function calcEffectiveMax(
   modelMaxInRoster: number | undefined,
   maxTotal: number,
   otherTotal: number,
   totalCount?: number,
   maxUnitSize?: number,
+  minUnitSize?: number,
 ): number {
   if (modelMaxInRoster !== undefined && totalCount !== undefined && maxUnitSize !== undefined) {
     const perN = maxUnitSize / modelMaxInRoster;
     if (Number.isInteger(perN) && perN > 1) {
+      // Модель «только при минимальном размере» (perN > maxUnitSize/2)
+      if (perN > maxUnitSize / 2 && minUnitSize !== undefined) {
+        if (totalCount > minUnitSize) return 0;
+        return Math.min(modelMaxInRoster, maxTotal - otherTotal);
+      }
+      // Стандартное правило «1 на каждые N моделей»
       const allowedByRatio = Math.min(Math.floor(totalCount / perN), modelMaxInRoster);
       return Math.min(allowedByRatio, maxTotal - otherTotal);
     }
@@ -166,9 +185,10 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
       const inRoster = countInRoster(unit.id);
       const limitReached = unit.maxInRoster !== undefined && inRoster >= unit.maxInRoster;
       // Ведущие модели (не зависят от числа других) — вверх списка
+      const minUnitSize = minContainer + mandatoryCount;
       const sortedContainerModels = [
-        ...containerModels.filter(m => isPrimaryContainerModel(m.maxInRoster, maxContainer + mandatoryCount)),
-        ...containerModels.filter(m => !isPrimaryContainerModel(m.maxInRoster, maxContainer + mandatoryCount)),
+        ...containerModels.filter(m => isPrimaryContainerModel(m.maxInRoster, maxContainer + mandatoryCount, minUnitSize)),
+        ...containerModels.filter(m => !isPrimaryContainerModel(m.maxInRoster, maxContainer + mandatoryCount, minUnitSize)),
       ];
       return (
         <li key={unit.id} className="unit-item">
@@ -218,8 +238,8 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
             {sortedContainerModels.map(model => {
               const count = modelCounts[model.id] ?? 0;
               const otherTotal = containerTotal - count;
-              const effectiveMax = calcEffectiveMax(model.maxInRoster, maxContainer, otherTotal, totalCount, maxContainer + mandatoryCount);
-              const isPrimary = isPrimaryContainerModel(model.maxInRoster, maxContainer + mandatoryCount);
+              const effectiveMax = calcEffectiveMax(model.maxInRoster, maxContainer, otherTotal, totalCount, maxContainer + mandatoryCount, minUnitSize);
+              const isPrimary = isPrimaryContainerModel(model.maxInRoster, maxContainer + mandatoryCount, minUnitSize);
               return (
                 <li key={model.id} className={`unit-nested-model-item${isPrimary ? ' unit-nested-model-item--primary' : ''}`}>
                   <span className="unit-nested-model-name">
