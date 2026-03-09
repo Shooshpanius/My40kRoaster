@@ -309,16 +309,20 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         for (const child of children) {
           if (child.entryType === 'model') {
             const modelUnit = mapItem(child, depth + 1);
+            // Сохраняем minInRoster как minCount для прямых дочерних моделей
+            // (используется для расчёта обязательного количества моделей в Blightlord-подобных юнитах)
+            const minCount = child.minInRoster !== undefined ? toNum(child.minInRoster) : undefined;
             // Если у [M] нет собственных costBands, но у родительского [U] есть — наследуем
             if (!modelUnit.costBands && parentCostBands && parentCostBands.length > 0) {
               result.push({
                 ...modelUnit,
+                minCount,
                 costBands: parentCostBands,
                 hasVariableCost: true,
                 modelCount: parentCostBands[0]?.minModels ?? 0,
               });
             } else {
-              result.push(modelUnit);
+              result.push(minCount !== undefined ? { ...modelUnit, minCount } : modelUnit);
             }
           } else if (!child.entryType && Array.isArray(child.children) && child.children.length > 0) {
             // Промежуточный контейнер — передаём parentCostBands дальше по дереву

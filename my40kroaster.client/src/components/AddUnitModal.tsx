@@ -45,8 +45,23 @@ function findMultiModelContainer(models?: Unit[]): Unit | undefined {
   return undefined;
 }
 
-// Вычисляет эффективный максимум для одного типа модели с учётом суммарного ограничения
-function calcEffectiveMax(modelMaxInRoster: number | undefined, maxTotal: number, otherTotal: number): number {
+// Вычисляет эффективный максимум для одного типа модели с учётом суммарного ограничения.
+// Если maxUnitSize / modelMaxInRoster — целое число N > 1, применяется правило «1 на каждые N моделей»:
+//   effectiveMax = floor(totalCount / N), ограниченное абсолютным лимитом и оставшимся местом в контейнере.
+function calcEffectiveMax(
+  modelMaxInRoster: number | undefined,
+  maxTotal: number,
+  otherTotal: number,
+  totalCount?: number,
+  maxUnitSize?: number,
+): number {
+  if (modelMaxInRoster !== undefined && totalCount !== undefined && maxUnitSize !== undefined) {
+    const perN = maxUnitSize / modelMaxInRoster;
+    if (Number.isInteger(perN) && perN > 1) {
+      const allowedByRatio = Math.min(Math.floor(totalCount / perN), modelMaxInRoster);
+      return Math.min(allowedByRatio, maxTotal - otherTotal);
+    }
+  }
   return Math.min(modelMaxInRoster ?? maxTotal, maxTotal - otherTotal);
 }
 
@@ -120,8 +135,129 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     // Случай: отряд [U] с несколькими типами моделей (например, Ironstrider Ballistarii)
     // — контейнерный узел задаёт суммарный min/max, каждый [M] имеет фиксированную стоимость
     // Если у [U] есть собственные costBands (Poxwalkers-подобный), пропускаем этот случай
-    const multiContainer = !isNested && unit.entryType === 'unit' && !unit.costBands?.length
+    const multiContainerForAll = !isNested && unit.entryType === 'unit'
       ? findMultiModelContainer(unit.models)
+      : undefined;
+
+    // Случай 3: Blightlord-подобный — несколько типов моделей + стоимость по costBands на [U]
+    // Отличие от Ironstrider: стоимость определяется по суммарному числу моделей через costBands, а не по сумме индивидуальных стоимостей
+    // Отличие от Poxwalkers (Case 2): в контейнере несколько разных типов моделей
+    if (multiContainerForAll && unit.costBands?.length && (multiContainerForAll.models?.length ?? 0) > 1) {
+      const containerModels = multiContainerForAll.models ?? [];
+      const minContainer = multiContainerForAll.minCount ?? 1;
+      const maxContainer = multiContainerForAll.maxCount ?? 99;
+      // Прямые дочерние модели юнита с minCount > 0 — обязательные (например, Blightlord Champion)
+      const directModelChildren = (unit.models ?? []).filter(m => m.entryType === 'model' && (m.minCount ?? 0) > 0);
+      const mandatoryCount = directModelChildren.reduce((sum, m) => sum + m.minCount!, 0);
+      const containerTotal = containerModels.reduce((sum, m) => sum + (modelCounts[m.id] ?? 0), 0);
+      const totalCount = containerTotal + mandatoryCount;
+      const cost = getCostForModelCount(unit.costBands, totalCount);
+      const isValidTotal = containerTotal >= minContainer && containerTotal <= maxContainer;
+      const canAdd = isValidTotal && (remainingPoints === undefined || cost <= remainingPoints);
+      const inRoster = countInRoster(unit.id);
+      const limitReached = unit.maxInRoster !== undefined && inRoster >= unit.maxInRoster;
+      return (
+        <li key={unit.id} className="unit-item">
+          <div className="unit-item-top">
+            <div className="unit-info">
+              <span className="unit-name">
+                {unit.name}
+                <span className="unit-type-badge">[U]</span>
+              </span>
+              <span className="unit-cost">{cost} pts</span>
+            </div>
+            <div className="unit-item-footer">
+              {unit.maxInRoster !== undefined && (
+                <span className={`unit-roster-count${limitReached ? ' unit-roster-count--limit' : ''}`}>
+                  {inRoster}/{unit.maxInRoster}
+                </span>
+              )}
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => onAdd({
+                  ...unit,
+                  cost,
+                  modelCounts: Object.fromEntries(containerModels.map(m => [m.id, modelCounts[m.id] ?? 0])),
+                  modelCount: totalCount,
+                })}
+                disabled={!canAdd || limitReached}
+                aria-label={attachMode ? 'Присоединить' : 'Добавить'}
+              >
+                +
+              </button>
+            </div>
+          </div>
+          {directModelChildren.length > 0 && (
+            <ul className="unit-nested-models">
+              {directModelChildren.map(m => (
+                <li key={m.id} className="unit-nested-model-item">
+                  <span className="unit-nested-model-name">
+                    {m.name}
+                    <span className="unit-type-badge">[M]</span>
+                  </span>
+                  <span className="unit-model-count-label">× {m.minCount} (обязательно)</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <ul className="unit-nested-models">
+            {containerModels.map(model => {
+              const count = modelCounts[model.id] ?? 0;
+              const otherTotal = containerTotal - count;
+              const effectiveMax = calcEffectiveMax(model.maxInRoster, maxContainer, otherTotal, totalCount, maxContainer + mandatoryCount);
+              return (
+                <li key={model.id} className="unit-nested-model-item">
+                  <span className="unit-nested-model-name">
+                    {model.name}
+                    <span className="unit-type-badge">[M]</span>
+                  </span>
+                  <div className="unit-model-count">
+                    <span className="unit-model-count-label">Миниатюр:</span>
+                    <button
+                      type="button"
+                      className="unit-model-count-btn"
+                      onClick={() => setModelCounts(prev => ({ ...prev, [model.id]: count - 1 }))}
+                      disabled={count <= 0}
+                      aria-label="Уменьшить количество миниатюр"
+                    >−</button>
+                    <input
+                      type="number"
+                      className="unit-model-count-input"
+                      value={count}
+                      min={0}
+                      max={effectiveMax}
+                      onChange={e => {
+                        const v = parseInt(e.target.value, 10);
+                        if (!isNaN(v)) {
+                          setModelCounts(prev => ({ ...prev, [model.id]: Math.min(effectiveMax, Math.max(0, v)) }));
+                        }
+                      }}
+                      aria-label="Количество миниатюр"
+                    />
+                    <button
+                      type="button"
+                      className="unit-model-count-btn"
+                      onClick={() => setModelCounts(prev => ({ ...prev, [model.id]: count + 1 }))}
+                      disabled={count >= effectiveMax}
+                      aria-label="Увеличить количество миниатюр"
+                    >+</button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {!isValidTotal && (
+            <div className="unit-model-count-hint">
+              Выберите от {minContainer} до {maxContainer} миниатюр (выбрано: {containerTotal})
+            </div>
+          )}
+        </li>
+      );
+    }
+
+    // Случай 1 (Ironstrider): несколько типов моделей, стоимость — сумма индивидуальных
+    const multiContainer = multiContainerForAll && !unit.costBands?.length
+      ? multiContainerForAll
       : undefined;
     if (multiContainer) {
       const containerModels = multiContainer.models ?? [];
