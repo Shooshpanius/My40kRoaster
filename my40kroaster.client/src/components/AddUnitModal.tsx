@@ -57,6 +57,20 @@ function countAllModels(models: Unit[], counts: Record<string, number>): number 
   }, 0);
 }
 
+// Рекурсивно проверяет, удовлетворяет ли текущий набор счётчиков минимальным (и максимальным)
+// требованиям всех контейнеров. Используется для блокировки кнопки «Добавить» при нарушении min.
+function validateCompositionMinima(models: Unit[], counts: Record<string, number>): boolean {
+  for (const m of models) {
+    if (m.entryType === undefined && m.models && m.models.length > 0) {
+      const subTotal = countAllModels(m.models, counts);
+      if (m.minCount !== undefined && subTotal < m.minCount) return false;
+      if (m.maxCount !== undefined && subTotal > m.maxCount) return false;
+      if (!validateCompositionMinima(m.models, counts)) return false;
+    }
+  }
+  return true;
+}
+
 // Интерактивный рендер состава отряда с фиксированной стоимостью.
 // Отображает иерархию моделей с кнопками +/− для выбора опциональных миниатюр.
 // Используется для отрядов с единой ценой, но переменным составом (Exaction Squad и т.п.):
@@ -75,14 +89,28 @@ function renderFixedCompositionControls(
     if (model.entryType === undefined && model.models && model.models.length > 0) {
       // Контейнер-группа (например «9 Exaction Vigilants» или «Up to 2:»)
       const subContainerTotal = countAllModels(model.models, counts);
+      // Показываем диапазон «min–max» если min ≠ max, иначе просто max
+      const rangeStr = model.maxCount !== undefined
+        ? (model.minCount !== undefined && model.minCount !== model.maxCount
+            ? `${model.minCount}–${model.maxCount}`
+            : String(model.maxCount))
+        : undefined;
+      const isBelowMin = model.minCount !== undefined && subContainerTotal < model.minCount;
       return (
         <li key={model.id} className="unit-nested-model-item unit-nested-model-item--group">
           <span className="unit-nested-model-name">{model.name}</span>
-          {model.maxCount !== undefined && (
-            <span className="unit-model-count-label">{subContainerTotal}/{model.maxCount}</span>
+          {rangeStr !== undefined && (
+            <span className={`unit-model-count-label${isBelowMin ? ' unit-model-count-label--error' : ''}`}>
+              {subContainerTotal}/{rangeStr}
+            </span>
           )}
           <ul className="unit-nested-models">
             {renderFixedCompositionControls(model.models, counts, onCountChange, model.maxCount)}
+            {isBelowMin && (
+              <li className="unit-model-count-hint unit-model-count-hint--error">
+                Необходимо не менее {model.minCount} (выбрано: {subContainerTotal})
+              </li>
+            )}
           </ul>
         </li>
       );
@@ -578,6 +606,10 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     const hasVariableChildModels = !!(unit.costBands?.length || findChildModelWithBands(unit.models) !== undefined);
     const isFixedCompositionUnit = !isNested && unit.entryType === 'unit'
       && !!(unit.models && unit.models.length > 0) && !hasVariableChildModels;
+    // Для фиксированных отрядов с несколькими контейнерами (Inquisitorial Agents и т.п.)
+    // проверяем, что все контейнеры удовлетворяют своим минимальным требованиям
+    const compositionValid = !isFixedCompositionUnit
+      || validateCompositionMinima(unit.models ?? [], buildCompositionSnapshot(unit.models ?? [], modelCounts));
     return (
       <li key={unit.id} className={`unit-item${isNested ? ' unit-item--nested' : ''}`}>
         <div className="unit-item-top">
@@ -612,7 +644,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
                     ...(compositionCounts ? { modelCounts: compositionCounts } : {}),
                   });
                 }}
-                disabled={!canAdd || limitReached}
+                disabled={!canAdd || !compositionValid || limitReached}
                 aria-label={attachMode ? 'Присоединить' : 'Добавить'}
               >
                 +

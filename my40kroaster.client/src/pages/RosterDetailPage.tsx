@@ -114,14 +114,28 @@ function renderFixedCompositionControls(
   return models.map(model => {
     if (model.entryType === undefined && model.models && model.models.length > 0) {
       const subContainerTotal = countAllModels(model.models, counts);
+      // Показываем диапазон «min–max» если min ≠ max, иначе просто max
+      const rangeStr = model.maxCount !== undefined
+        ? (model.minCount !== undefined && model.minCount !== model.maxCount
+            ? `${model.minCount}–${model.maxCount}`
+            : String(model.maxCount))
+        : undefined;
+      const isBelowMin = model.minCount !== undefined && subContainerTotal < model.minCount;
       return (
         <li key={model.id} className="unit-nested-model-item unit-nested-model-item--group">
           <span className="unit-nested-model-name">{model.name}</span>
-          {model.maxCount !== undefined && (
-            <span className="unit-model-count-label">{subContainerTotal}/{model.maxCount}</span>
+          {rangeStr !== undefined && (
+            <span className={`unit-model-count-label${isBelowMin ? ' unit-model-count-label--error' : ''}`}>
+              {subContainerTotal}/{rangeStr}
+            </span>
           )}
           <ul className="unit-nested-models">
             {renderFixedCompositionControls(model.models, counts, onCountChange, model.maxCount)}
+            {isBelowMin && (
+              <li className="unit-model-count-hint unit-model-count-hint--error">
+                Необходимо не менее {model.minCount} (выбрано: {subContainerTotal})
+              </li>
+            )}
           </ul>
         </li>
       );

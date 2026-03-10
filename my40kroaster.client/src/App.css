@@ -719,6 +719,18 @@ body {
   list-style: none;
 }
 
+/* Вариант подсказки с усиленным фоном для вложенных контейнеров (Inquisitorial Agents и т.п.) */
+.unit-model-count-hint--error {
+  background: rgba(231, 76, 60, 0.08);
+  border-radius: 4px;
+}
+
+/* Счётчик с ошибкой (ниже минимума) */
+.unit-model-count-label--error {
+  color: var(--danger, #e74c3c);
+  font-weight: 600;
+}
+
 /* Unit Groups */
 .unit-groups {
   display: flex;
