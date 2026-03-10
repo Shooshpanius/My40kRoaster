@@ -93,19 +93,10 @@ function findCase4PrimaryContainer(allContainers: Unit[]): Unit | undefined {
   }, undefined);
 }
 
-// Определяет, является ли модель «только при минимальном размере отряда».
-// Это ИСКЛЮЧИТЕЛЬНО модели с maxInRoster=1 (НОД(1, N) = 1 всегда).
-// Пример: plague spewer+CCW (maxInRoster=1) — ровно 1 в отряде, доступна только при мин-размере.
-// Модели с maxInRoster>1 и НОД>1 подпадают под «perCount на каждые perModels» (не мин-размер).
-// Модели с maxInRoster>1 и НОД=1 (например combi-bolter, maxInRoster=9) — обычный абсолютный лимит.
-function isMinSizeOnlyModel(modelMaxInRoster: number | undefined): boolean {
-  return modelMaxInRoster === 1;
-}
-
 // Определяет, является ли модель «ведущей» — не зависит от числа других моделей через правило 1:N.
 // Ведущие модели отображаются вверху списка.
 // Если maxInRoster >= maxUnitSize — модель может занять все слоты, считается ведущей.
-// Модели с НОД=1 (combi-bolter, plague spewer) — ведущие.
+// Модели с НОД=1 (soulreaper cannon, combi-bolter) — ведущие (абсолютный лимит, не зависит от состава).
 // Модели с НОД>1 и maxInRoster < maxUnitSize (flail "1 на 5", combi-weapon "3 на 5") — зависимые (secondary).
 function isPrimaryContainerModel(modelMaxInRoster: number | undefined, maxUnitSize: number): boolean {
   if (modelMaxInRoster === undefined) return true;
@@ -116,24 +107,19 @@ function isPrimaryContainerModel(modelMaxInRoster: number | undefined, maxUnitSi
 }
 
 // Вычисляет эффективный максимум для одного типа модели с учётом суммарного ограничения.
-// Три случая на основе НОД(maxInRoster, maxUnitSize):
+// Два случая на основе НОД(maxInRoster, maxUnitSize):
 //   НОД > 1 И maxInRoster < maxUnitSize: правило «perCount на каждые perModels» (flail "1 на 5", combi-weapon "3 на 5")
 //            effectiveMax = floor(totalCount / perModels) * perCount
-//   НОД = 1, maxInRoster = 1: «только при минимальном размере» (plague spewer+CCW)
-//            effectiveMax = 0 если totalCount > minUnitSize, иначе min(1, свободных мест)
-//   НОД = 1, maxInRoster > 1 (или maxInRoster >= maxUnitSize): обычный абсолютный лимит (combi-bolter, maxInRoster=9)
+//   Иначе (в том числе maxInRoster=1): обычный абсолютный лимит (soulreaper cannon, combi-bolter и т.д.)
 //            effectiveMax = min(maxInRoster, свободных мест)
 // Важно: если maxInRoster >= maxUnitSize (например Kataphron Breachers — все 4 типа моделей имеют
 // maxInRoster = 6 = maxUnitSize), per-N формула НЕ применяется — модель может занять все слоты контейнера.
-// maxTotal — эффективный максимум контейнера (может быть уменьшен до minContainer,
-// если выбрана модель «только при минимальном размере»).
 function calcEffectiveMax(
   modelMaxInRoster: number | undefined,
   maxTotal: number,
   otherTotal: number,
   totalCount?: number,
   maxUnitSize?: number,
-  minUnitSize?: number,
 ): number {
   if (modelMaxInRoster !== undefined && totalCount !== undefined && maxUnitSize !== undefined) {
     const g = gcd(modelMaxInRoster, maxUnitSize);
@@ -144,11 +130,6 @@ function calcEffectiveMax(
       const perCount = modelMaxInRoster / g;
       const allowedByRatio = Math.min(Math.floor(totalCount / perModels) * perCount, modelMaxInRoster);
       return Math.min(allowedByRatio, maxTotal - otherTotal);
-    }
-    if (modelMaxInRoster === 1 && minUnitSize !== undefined) {
-      // «Только при минимальном размере» (plague spewer+CCW)
-      if (totalCount > minUnitSize) return 0;
-      return Math.min(1, maxTotal - otherTotal);
     }
   }
   return Math.min(modelMaxInRoster ?? maxTotal, maxTotal - otherTotal);
@@ -887,13 +868,7 @@ export function RosterDetailPage() {
                         const containerTotal = containerModels.reduce((sum, m) => sum + (currentCounts[m.id] ?? (m.minCount ?? 0)), 0);
                         // maxUnitSize = максимальный размер отряда (контейнер + обязательные)
                         const maxUnitSize = maxContainer + mandatoryCount;
-                        const minUnitSize = minContainer + mandatoryCount;
-                        // Если выбрана модель «только при минимальном размере» (plague spewer+CCW) —
-                        // контейнер жёстко ограничен минимальным размером: не более minContainer моделей.
-                        const isMinSizeOnlySelected = containerModels.some(
-                          m => isMinSizeOnlyModel(m.maxInRoster) && (currentCounts[m.id] ?? 0) > 0
-                        );
-                        const effectiveMaxContainer = isMinSizeOnlySelected ? minContainer : maxContainer;
+                        const effectiveMaxContainer = maxContainer;
                         // Ведущие модели (не зависят от числа других) — вверх списка
                         const sortedContainerModels = [
                           ...containerModels.filter(m => isPrimaryContainerModel(m.maxInRoster, maxUnitSize)),
@@ -904,7 +879,7 @@ export function RosterDetailPage() {
                           const model = containerModels.find(m => m.id === modelId);
                           if (!model) return;
                           const otherTotal = containerTotal - (currentCounts[modelId] ?? (model.minCount ?? 0));
-                          const effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, otherTotal, containerTotal + mandatoryCount, maxUnitSize, minUnitSize);
+                          const effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, otherTotal, containerTotal + mandatoryCount, maxUnitSize);
                           const clamped = Math.min(effectiveMax, Math.max(model.minCount ?? 0, val));
                           const newCounts = { ...currentCounts, [modelId]: clamped };
                           const newContainerTotal = Object.values(newCounts).reduce((s, v) => s + v, 0);
@@ -943,7 +918,7 @@ export function RosterDetailPage() {
                               {sortedContainerModels.map(model => {
                                 const count = currentCounts[model.id] ?? (model.minCount ?? 0);
                                 const otherTotal = containerTotal - count;
-                                const effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, otherTotal, containerTotal + mandatoryCount, maxUnitSize, minUnitSize);
+                                const effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, otherTotal, containerTotal + mandatoryCount, maxUnitSize);
                                 const isPrimary = isPrimaryContainerModel(model.maxInRoster, maxUnitSize);
                                 return (
                                   <li key={model.id} className={`unit-nested-model-item${isPrimary ? ' unit-nested-model-item--primary' : ''}`}>
