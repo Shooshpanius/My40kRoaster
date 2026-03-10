@@ -313,8 +313,12 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
       );
     }
 
-    // Случай 1 (Ironstrider): несколько типов моделей, стоимость — сумма индивидуальных
-    const multiContainer = multiContainerForAll && !unit.costBands?.length
+    // Случай 1 (Ironstrider): несколько типов моделей, стоимость — сумма индивидуальных.
+    // Пропускаем этот случай если ни одна модель в контейнере не имеет индивидуальной стоимости:
+    // отряды с фиксированным составом и единой стоимостью (Exaction Squad, Sisters of Battle и т.п.)
+    // должны рендериться как стандартные с фиксированной ценой unit.cost.
+    const containerHasCosts = (multiContainerForAll?.models ?? []).some(m => (m.cost ?? 0) > 0);
+    const multiContainer = multiContainerForAll && !unit.costBands?.length && containerHasCosts
       ? multiContainerForAll
       : undefined;
     if (multiContainer) {

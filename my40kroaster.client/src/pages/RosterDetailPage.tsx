@@ -681,8 +681,11 @@ export function RosterDetailPage() {
                       }
 
                       // Случай 1: отряд с несколькими типами моделей (Ironstrider-подобная структура)
-                      // Если у [U] есть собственные costBands (Poxwalkers-подобный), пропускаем этот случай
-                      const multiContainer = !primaryUnit.costBands?.length
+                      // Если у [U] есть собственные costBands (Poxwalkers-подобный), пропускаем этот случай.
+                      // Если модели в контейнере не имеют индивидуальных стоимостей, пропускаем этот случай —
+                      // отряды с фиксированным составом рендерятся как стандартные (Exaction Squad и т.п.).
+                      const containerHasCosts = (multiContainerForAll?.models ?? []).some(m => (m.cost ?? 0) > 0);
+                      const multiContainer = !primaryUnit.costBands?.length && containerHasCosts
                         ? multiContainerForAll
                         : undefined;
                       if (multiContainer) {
