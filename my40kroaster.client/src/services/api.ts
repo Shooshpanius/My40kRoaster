@@ -285,7 +285,8 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       const costBands: UnitCostBand[] | undefined = hasVariableCost
         ? (rawTiers as ApiCostTier[]).map(t => ({
             minModels: toNumStrict(t.minModels),
-            maxModels: toNumStrict(t.maxModels),
+            // null maxModels означает «не ограничено» — сохраняем как undefined (не 0!)
+            maxModels: toNum(t.maxModels),
             cost: toNumStrict(t.points),
           }))
         : undefined;
@@ -306,6 +307,74 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
       // (пример: Poxwalkers [U] имеет costTiers, а дочерний [M] "Poxwalker" — нет).
       function buildChildTree(children: ApiUnitItem[], parentCostBands?: UnitCostBand[]): Unit[] {
         const result: Unit[] = [];
+
+        // Если у [U] есть costBands и несколько прямых [M]-детей без промежуточного контейнера
+        // (пример: Pteraxii Skystalkers — Alpha + Skystalkers), создаём синтетический контейнер.
+        // Это нужно, чтобы корректно работал Case 3 (Blightlord-подобный) в UI:
+        // «фиксированные» [M] (min === max) → обязательные, «переменные» → в контейнере.
+        const directModelChildren = children.filter(c => c.entryType === 'model');
+        const containerChildren = children.filter(
+          c => !c.entryType && Array.isArray(c.children) && c.children.length > 0
+        );
+        const needSyntheticContainer =
+          parentCostBands &&
+          directModelChildren.length >= 2 &&
+          containerChildren.length === 0;
+
+        if (needSyntheticContainer) {
+          // «Фиксированные» модели: minInRoster === maxInRoster (всегда одинаковое количество)
+          const fixedModels = directModelChildren.filter(
+            m =>
+              m.minInRoster != null &&
+              m.maxInRoster != null &&
+              Number(m.minInRoster) === Number(m.maxInRoster)
+          );
+          // «Переменные» модели: количество может меняться
+          const varModels = directModelChildren.filter(
+            m =>
+              !(
+                m.minInRoster != null &&
+                m.maxInRoster != null &&
+                Number(m.minInRoster) === Number(m.maxInRoster)
+              )
+          );
+
+          // Фиксированные → обязательные прямые дочерние (без наследования costBands)
+          for (const fixed of fixedModels) {
+            const modelUnit = mapItem(fixed, depth + 1);
+            const minCount = fixed.minInRoster !== undefined ? toNum(fixed.minInRoster) : undefined;
+            result.push(minCount !== undefined ? { ...modelUnit, minCount } : modelUnit);
+          }
+
+          // Переменные → синтетический контейнер (без costBands на каждой модели)
+          if (varModels.length > 0) {
+            const varModelUnits: Unit[] = varModels.map(vm => {
+              const modelUnit = mapItem(vm, depth + 1);
+              const minCount = vm.minInRoster !== undefined ? toNum(vm.minInRoster) : undefined;
+              return minCount !== undefined ? { ...modelUnit, minCount } : modelUnit;
+            });
+            const containerMinCount = varModels.reduce(
+              (s, vm) => s + (toNum(vm.minInRoster) ?? 0),
+              0
+            );
+            const containerMaxCount = varModels.reduce(
+              (s, vm) => s + (toNum(vm.maxInRoster) ?? 99),
+              0
+            );
+            result.push({
+              id: `synthetic-container-${item.id ?? ''}`,
+              name: '',
+              category: '',
+              cost: undefined,
+              entryType: undefined,
+              models: varModelUnits,
+              minCount: containerMinCount,
+              maxCount: containerMaxCount,
+            });
+          }
+          return result;
+        }
+
         for (const child of children) {
           if (child.entryType === 'model') {
             const modelUnit = mapItem(child, depth + 1);

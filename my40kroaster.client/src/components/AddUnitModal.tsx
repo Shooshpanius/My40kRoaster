@@ -15,7 +15,8 @@ interface AddUnitModalProps {
 }
 
 function getCostForModelCount(bands: UnitCostBand[], count: number): number {
-  const band = bands.find(b => count >= b.minModels && count <= b.maxModels);
+  // undefined maxModels означает «не ограничено сверху» (открытый диапазон)
+  const band = bands.find(b => count >= b.minModels && count <= (b.maxModels ?? Infinity));
   return band?.cost ?? bands[0].cost;
 }
 
@@ -24,7 +25,7 @@ function findChildModelWithBands(models?: Unit[]): Unit | undefined {
   if (!models) return undefined;
   for (const m of models) {
     if (m.entryType === 'model' && m.costBands && m.costBands.length >= 1 &&
-      (m.costBands.length > 1 || (m.costBands[0]?.minModels ?? 0) < (m.costBands[0]?.maxModels ?? 0))) {
+      (m.costBands.length > 1 || (m.costBands[0]?.minModels ?? 0) < (m.costBands[0]?.maxModels ?? Infinity))) {
       return m;
     }
     const found = findChildModelWithBands(m.models);
@@ -417,9 +418,11 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     // Контролы количества моделей — только для записей entryType="model" с диапазонами стоимости.
     // entryType="unit" (например, Poxwalkers) передаёт costBands дочерним [M] через api.ts buildChildTree.
     const hasBands = unit.entryType === 'model' && !!(unit.costBands && unit.costBands.length >= 1 &&
-      (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? 0)));
+      (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? Infinity)));
     const minModels = hasBands ? unit.costBands![0].minModels : 1;
-    const maxModels = hasBands ? unit.costBands![unit.costBands!.length - 1].maxModels : 1;
+    // undefined maxModels в последнем диапазоне означает «не ограничено сверху»;
+    // используем maxInRoster модели как фактический верхний предел для UI-контрола
+    const maxModels = hasBands ? (unit.costBands![unit.costBands!.length - 1].maxModels ?? unit.maxInRoster ?? 99) : 1;
     const modelCount = hasBands ? (modelCounts[unit.id] ?? minModels) : unit.modelCount;
 
     // Для [U] с дочерними [M] с costBands: берём count из дочерней модели для расчёта стоимости

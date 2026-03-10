@@ -11,7 +11,8 @@ import { UNALIGNED_FORCES_ID } from '../services/api';
 const POINTS_OPTIONS = [500, 1000, 1500, 2000, 2500];
 
 function getCostForModelCount(bands: UnitCostBand[], count: number): number {
-  const band = bands.find(b => count >= b.minModels && count <= b.maxModels);
+  // undefined maxModels означает «не ограничено сверху» (открытый диапазон)
+  const band = bands.find(b => count >= b.minModels && count <= (b.maxModels ?? Infinity));
   return band?.cost ?? bands[0].cost;
 }
 
@@ -113,10 +114,12 @@ function renderRosterModels(
       : undefined;
     const hasBands = !!(effectiveBands && (
       effectiveBands.length > 1 ||
-      (effectiveBands[0]?.minModels ?? 0) < (effectiveBands[0]?.maxModels ?? 0)
+      (effectiveBands[0]?.minModels ?? 0) < (effectiveBands[0]?.maxModels ?? Infinity)
     ));
     const minM = hasBands ? (effectiveBands?.[0].minModels ?? 0) : 0;
-    const maxM = hasBands ? (effectiveBands?.[effectiveBands.length - 1].maxModels ?? 0) : 0;
+    // undefined maxModels в последнем диапазоне означает «не ограничено сверху»;
+    // используем maxInRoster модели как фактический верхний предел для UI-контрола
+    const maxM = hasBands ? (effectiveBands?.[effectiveBands.length - 1].maxModels ?? model.maxInRoster ?? 99) : 0;
     // Текущий count берётся из primaryUnit.modelCount (хранится на уровне [U])
     const currentCount = hasBands ? (parentModelCount ?? minM) : undefined;
     return (
@@ -362,10 +365,11 @@ export function RosterDetailPage() {
                           )}
                         </div>
                         {primaryUnit.entryType === 'model' && primaryUnit.costBands &&
-                          (primaryUnit.costBands.length > 1 || (primaryUnit.costBands[0]?.minModels ?? 0) < (primaryUnit.costBands[0]?.maxModels ?? 0)) && (() => {
+                          (primaryUnit.costBands.length > 1 || (primaryUnit.costBands[0]?.minModels ?? 0) < (primaryUnit.costBands[0]?.maxModels ?? Infinity)) && (() => {
                           const bands = primaryUnit.costBands!;
                           const minM = bands[0].minModels;
-                          const maxM = bands[bands.length - 1].maxModels;
+                          // undefined maxModels в последнем диапазоне означает «не ограничено сверху»
+                          const maxM = bands[bands.length - 1].maxModels ?? primaryUnit.maxInRoster ?? 99;
                           const currentCount = primaryUnit.modelCount ?? minM;
                           const setCount = (val: number) => {
                             const clamped = Math.min(maxM, Math.max(minM, val));
@@ -469,10 +473,11 @@ export function RosterDetailPage() {
                         {group.units.slice(1).map((unit) => {
                           // Контролы только для присоединённых [M] с диапазонами стоимости
                           const hasBands = unit.entryType === 'model' && !!(unit.costBands && unit.costBands.length >= 1 &&
-                            (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? 0)));
+                            (unit.costBands.length > 1 || (unit.costBands[0]?.minModels ?? 0) < (unit.costBands[0]?.maxModels ?? Infinity)));
                           const bands = hasBands ? unit.costBands! : null;
                           const minM = bands ? bands[0].minModels : 1;
-                          const maxM = bands ? bands[bands.length - 1].maxModels : 1;
+                          // undefined maxModels в последнем диапазоне означает «не ограничено сверху»
+                          const maxM = bands ? (bands[bands.length - 1].maxModels ?? unit.maxInRoster ?? 99) : 1;
                           const currentCount = unit.modelCount ?? minM;
                           const setAttachedCount = (val: number) => {
                             const clamped = Math.min(maxM, Math.max(minM, val));
@@ -770,7 +775,10 @@ export function RosterDetailPage() {
                       // чтобы дочерние [M] могли показать контролы и обновить modelCount у [U]
                       const bands = primaryUnit.costBands;
                       const minM = bands?.[0].minModels ?? 0;
-                      const maxM = bands ? bands[bands.length - 1].maxModels : 0;
+                      // undefined maxModels в последнем диапазоне означает «не ограничено сверху»;
+                      // используем maxInRoster первой дочерней модели как фактический верхний предел
+                      const firstChildModel = (primaryUnit.models ?? []).find(m => m.entryType === 'model');
+                      const maxM = bands ? (bands[bands.length - 1].maxModels ?? firstChildModel?.maxInRoster ?? 99) : 0;
                       const currentCount = primaryUnit.modelCount ?? minM;
                       const handleCountChange = bands ? (val: number) => {
                         const clamped = Math.min(maxM, Math.max(minM, val));
