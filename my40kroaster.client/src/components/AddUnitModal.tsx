@@ -195,6 +195,16 @@ function findMultiModelContainer(models?: Unit[]): Unit | undefined {
   return undefined;
 }
 
+// Возвращает ВСЕ ограниченные контейнеры (min/max) из прямых дочерних узлов юнита.
+// Используется для Case 4 — юниты с несколькими независимыми контейнерами (Inquisitorial Agents).
+function findAllMultiModelContainers(models?: Unit[]): Unit[] {
+  if (!models) return [];
+  return models.filter(
+    m => m.entryType === undefined && m.models && m.models.length > 0 &&
+      (m.minCount !== undefined || m.maxCount !== undefined)
+  );
+}
+
 // Наибольший общий делитель (алгоритм Евклида)
 function gcd(a: number, b: number): number {
   while (b !== 0) { const temp = b; b = a % b; a = temp; }
@@ -329,6 +339,145 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     const multiContainerForAll = !isNested && unit.entryType === 'unit'
       ? findMultiModelContainer(unit.models)
       : undefined;
+
+    // Случай 4: юнит с несколькими независимыми контейнерами и переменной стоимостью по costBands.
+    // Пример: Inquisitorial Agents — «1-2 Gun Servitors» + «5-10 Acolytes»,
+    // суммарное количество моделей определяет стоимость через costBands на [U].
+    // Каждый контейнер имеет собственный min/max, независимый от остальных.
+    const allBoundedContainers = !isNested && unit.entryType === 'unit' && unit.costBands?.length
+      ? findAllMultiModelContainers(unit.models)
+      : [];
+
+    if (allBoundedContainers.length >= 2) {
+      // Суммарное количество по всем контейнерам → определяет стоимость через costBands
+      const totalCount = allBoundedContainers.reduce(
+        (sum, c) => sum + (c.models ?? []).reduce((cs, m) => cs + (modelCounts[m.id] ?? 0), 0),
+        0
+      );
+      const cost = getCostForModelCount(unit.costBands!, totalCount);
+      // Все контейнеры должны удовлетворять своим минимальным ограничениям
+      const containersValid = allBoundedContainers.every(c => {
+        const cTotal = (c.models ?? []).reduce((s, m) => s + (modelCounts[m.id] ?? 0), 0);
+        return (c.minCount === undefined || cTotal >= c.minCount) &&
+               (c.maxCount === undefined || cTotal <= c.maxCount);
+      });
+      const canAdd = containersValid && (remainingPoints === undefined || cost <= remainingPoints);
+      const inRoster = countInRoster(unit.id);
+      const limitReached = unit.maxInRoster !== undefined && inRoster >= unit.maxInRoster;
+      return (
+        <li key={unit.id} className="unit-item">
+          <div className="unit-item-top">
+            <div className="unit-info">
+              <span className="unit-name">
+                {unit.name}
+                <span className="unit-type-badge">[U]</span>
+              </span>
+              <span className="unit-cost">{cost} pts</span>
+            </div>
+            <div className="unit-item-footer">
+              {unit.maxInRoster !== undefined && (
+                <span className={`unit-roster-count${limitReached ? ' unit-roster-count--limit' : ''}`}>
+                  {inRoster}/{unit.maxInRoster}
+                </span>
+              )}
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => onAdd({
+                  ...unit,
+                  cost,
+                  modelCounts: Object.fromEntries(
+                    allBoundedContainers.flatMap(c => (c.models ?? []).map(m => [m.id, modelCounts[m.id] ?? 0]))
+                  ),
+                  modelCount: totalCount,
+                })}
+                disabled={!canAdd || limitReached}
+                aria-label={attachMode ? 'Присоединить' : 'Добавить'}
+              >
+                +
+              </button>
+            </div>
+          </div>
+          {allBoundedContainers.map(container => {
+            const cModels = container.models ?? [];
+            const cTotal = cModels.reduce((s, m) => s + (modelCounts[m.id] ?? 0), 0);
+            const cMin = container.minCount;
+            const cMax = container.maxCount;
+            const isBelowMin = cMin !== undefined && cTotal < cMin;
+            const rangeStr = cMax !== undefined
+              ? (cMin !== undefined && cMin !== cMax ? `${cMin}–${cMax}` : String(cMax))
+              : undefined;
+            return (
+              <div key={container.id} className="unit-container-section">
+                <div className="unit-container-section-header">
+                  <span className="unit-container-section-name">{container.name}</span>
+                  {rangeStr !== undefined && (
+                    <span className={`unit-model-count-label${isBelowMin ? ' unit-model-count-label--error' : ''}`}>
+                      {cTotal}/{rangeStr}
+                    </span>
+                  )}
+                </div>
+                <ul className="unit-nested-models">
+                  {cModels.map(model => {
+                    const count = modelCounts[model.id] ?? 0;
+                    const maxPerModel = model.maxInRoster ?? 0;
+                    const otherInContainer = cTotal - count;
+                    // Максимум = min(maxInRoster модели, оставшихся мест в контейнере)
+                    const effectiveMax = cMax !== undefined
+                      ? Math.min(maxPerModel, cMax - otherInContainer)
+                      : maxPerModel;
+                    return (
+                      <li key={model.id} className="unit-nested-model-item">
+                        <span className="unit-nested-model-name">
+                          {model.name}
+                          <span className="unit-type-badge">[M]</span>
+                        </span>
+                        <div className="unit-model-count">
+                          <span className="unit-model-count-label">Миниатюр:</span>
+                          <button
+                            type="button"
+                            className="unit-model-count-btn"
+                            onClick={() => setModelCounts(prev => ({ ...prev, [model.id]: Math.max(0, count - 1) }))}
+                            disabled={count <= 0}
+                            aria-label="Уменьшить количество миниатюр"
+                          >−</button>
+                          <input
+                            type="number"
+                            className="unit-model-count-input"
+                            value={count}
+                            min={0}
+                            max={effectiveMax}
+                            onChange={e => {
+                              const v = parseInt(e.target.value, 10);
+                              if (!isNaN(v)) setModelCounts(prev => ({ ...prev, [model.id]: Math.min(effectiveMax, Math.max(0, v)) }));
+                            }}
+                            aria-label="Количество миниатюр"
+                          />
+                          <button
+                            type="button"
+                            className="unit-model-count-btn"
+                            onClick={() => setModelCounts(prev => ({ ...prev, [model.id]: count + 1 }))}
+                            disabled={count >= effectiveMax}
+                            aria-label="Увеличить количество миниатюр"
+                          >+</button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                  {isBelowMin && (
+                    <li className="unit-model-count-hint unit-model-count-hint--error">
+                      Необходимо не менее {cMin} (выбрано: {cTotal})
+                    </li>
+                  )}
+                </ul>
+              </div>
+            );
+          })}
+          <div className="unit-model-count-hint unit-model-count-hint--total">
+            Итого миниатюр: {totalCount}
+          </div>
+        </li>
+      );
+    }
 
     // Случай 3: Blightlord/Deathshroud-подобный — один или несколько типов моделей + стоимость по costBands на [U]
     // Отличие от Ironstrider: стоимость определяется по суммарному числу моделей через costBands, а не по сумме индивидуальных стоимостей
