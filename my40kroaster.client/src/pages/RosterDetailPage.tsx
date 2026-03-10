@@ -89,6 +89,44 @@ function calcEffectiveMax(
   return Math.min(modelMaxInRoster ?? maxTotal, maxTotal - otherTotal);
 }
 
+// Информационный (read-only) рендер состава отряда с фиксированной стоимостью.
+// Показывает иерархию моделей и групп без интерактивных элементов управления.
+// Используется для отрядов с жёстко заданным составом (Exaction Squad и т.п.).
+function renderCompositionInfo(models: Unit[]): React.ReactNode {
+  return models.map(model => {
+    if (model.entryType === undefined && model.models && model.models.length > 0) {
+      // Контейнер-группа (например «9 Exaction Vigilants» или «Up to 2:»)
+      return (
+        <li key={model.id} className="unit-nested-model-item unit-nested-model-item--group">
+          <span className="unit-nested-model-name">{model.name}</span>
+          <ul className="unit-nested-models">
+            {renderCompositionInfo(model.models)}
+          </ul>
+        </li>
+      );
+    }
+    // Обычная модель [M] — показываем имя и диапазон количества
+    const min = model.minCount;
+    const max = model.maxInRoster;
+    const countStr = (min !== undefined && max !== undefined && min !== max)
+      ? `×${min}–${max}`
+      : max !== undefined
+        ? `×${max}`
+        : min !== undefined
+          ? `×${min}`
+          : '';
+    return (
+      <li key={model.id} className="unit-nested-model-item">
+        <span className="unit-nested-model-name">
+          {model.name}
+          {model.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
+        </span>
+        {countStr && <span className="unit-model-count-label">{countStr}</span>}
+      </li>
+    );
+  });
+}
+
 function renderRosterModels(
   models: Unit[],
   parentCostBands?: UnitCostBand[],
@@ -778,9 +816,14 @@ export function RosterDetailPage() {
                       // чтобы дочерние [M] могли показать контролы и обновить modelCount у [U]
                       const bands = primaryUnit.costBands;
                       // Для юнитов с фиксированным составом и единой стоимостью (без переменных costBands)
-                      // не отображаем детализацию состава — интерактивных контролов нет,
-                      // а иерархия «9 Exaction Vigilants / Up to 2:» только запутывает пользователя.
-                      if (!bands) return null;
+                      // показываем состав в информационном режиме (без интерактивных контролов)
+                      if (!bands) {
+                        return (
+                          <ul className="unit-nested-models unit-nested-models--roster">
+                            {renderCompositionInfo(primaryUnit.models ?? [])}
+                          </ul>
+                        );
+                      }
                       const minM = bands?.[0].minModels ?? 0;
                       // undefined maxModels в последнем диапазоне означает «не ограничено сверху»;
                       // используем maxInRoster первой дочерней модели как фактический верхний предел

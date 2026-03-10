@@ -34,6 +34,44 @@ function findChildModelWithBands(models?: Unit[]): Unit | undefined {
   return undefined;
 }
 
+// Информационный (read-only) рендер состава отряда с фиксированной стоимостью.
+// Показывает иерархию моделей и групп без интерактивных элементов управления.
+// Используется для отрядов, где состав задан жёстко и не влияет на цену (Exaction Squad и т.п.).
+function renderCompositionInfo(models: Unit[]): React.ReactNode {
+  return models.map(model => {
+    if (model.entryType === undefined && model.models && model.models.length > 0) {
+      // Контейнер-группа (например «9 Exaction Vigilants» или «Up to 2:»)
+      return (
+        <li key={model.id} className="unit-nested-model-item unit-nested-model-item--group">
+          <span className="unit-nested-model-name">{model.name}</span>
+          <ul className="unit-nested-models">
+            {renderCompositionInfo(model.models)}
+          </ul>
+        </li>
+      );
+    }
+    // Обычная модель [M] — показываем имя и диапазон количества
+    const min = model.minCount;
+    const max = model.maxInRoster;
+    const countStr = (min !== undefined && max !== undefined && min !== max)
+      ? `×${min}–${max}`
+      : max !== undefined
+        ? `×${max}`
+        : min !== undefined
+          ? `×${min}`
+          : '';
+    return (
+      <li key={model.id} className="unit-nested-model-item">
+        <span className="unit-nested-model-name">
+          {model.name}
+          {model.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
+        </span>
+        {countStr && <span className="unit-model-count-label">{countStr}</span>}
+      </li>
+    );
+  });
+}
+
 // Ищет контейнерный узел с несколькими типами моделей и ограничением по суммарному количеству
 function findMultiModelContainer(models?: Unit[]): Unit | undefined {
   if (!models) return undefined;
@@ -514,13 +552,15 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
             >+</button>
           </div>
         )}
-        {/* Список моделей показываем только для юнитов с переменной стоимостью (Poxwalkers и т.п.),
-            где у дочерних [M] есть costBands. Для юнитов с фиксированным составом и единой ценой
-            (Exaction Squad и т.п.) иерархия состава не нужна и только запутывает пользователя. */}
-        {!isNested && unit.entryType === 'unit' && unit.models && unit.models.length > 0 &&
-          (unit.costBands?.length || findChildModelWithBands(unit.models) !== undefined) && (
+        {/* Список моделей:
+            — для юнитов с переменной стоимостью (Poxwalkers и т.п.): интерактивные контролы через renderUnitItem
+            — для юнитов с фиксированным составом и единой ценой (Exaction Squad и т.п.): только информационный вид */}
+        {!isNested && unit.entryType === 'unit' && unit.models && unit.models.length > 0 && (
           <ul className="unit-nested-models">
-            {unit.models.map(child => renderUnitItem(child, depth + 1))}
+            {(unit.costBands?.length || findChildModelWithBands(unit.models) !== undefined)
+              ? unit.models.map(child => renderUnitItem(child, depth + 1))
+              : renderCompositionInfo(unit.models)
+            }
           </ul>
         )}
       </li>

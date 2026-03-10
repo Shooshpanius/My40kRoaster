@@ -860,6 +860,21 @@ body {
   color: var(--text);
 }
 
+/* Группа-секция в информационном отображении состава (без интерактивных контролов) */
+.unit-nested-model-item--group {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.unit-nested-model-item--group > .unit-nested-models {
+  border-top: none;
+  width: 100%;
+  padding-left: 0.75rem;
+}
+
 .unit-nested-model-name {
   flex: 1;
   min-width: 0;
