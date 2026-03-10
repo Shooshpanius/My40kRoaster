@@ -34,39 +34,122 @@ function findChildModelWithBands(models?: Unit[]): Unit | undefined {
   return undefined;
 }
 
-// Информационный (read-only) рендер состава отряда с фиксированной стоимостью.
-// Показывает иерархию моделей и групп без интерактивных элементов управления.
-// Используется для отрядов, где состав задан жёстко и не влияет на цену (Exaction Squad и т.п.).
-function renderCompositionInfo(models: Unit[]): React.ReactNode {
+// Рекурсивно собирает счётчики моделей для снимка состава: counts[id] ?? minCount ?? 0
+function buildCompositionSnapshot(models: Unit[], counts: Record<string, number>): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const m of models) {
+    if (m.entryType === 'model') {
+      result[m.id] = counts[m.id] ?? m.minCount ?? 0;
+    }
+    if (m.models) Object.assign(result, buildCompositionSnapshot(m.models, counts));
+  }
+  return result;
+}
+
+// Рекурсивно считает сумму счётчиков всех [M]-узлов в дереве (включая вложенные контейнеры).
+// Для моделей, ещё не затронутых пользователем (нет в counts), берём minCount ?? 0 как базу —
+// это делает счётчик контейнера согласованным с отображаемыми значениями (shotgun min=4 → считается 4).
+function countAllModels(models: Unit[], counts: Record<string, number>): number {
+  return models.reduce((sum, m) => {
+    if (m.entryType === 'model') return sum + (counts[m.id] ?? m.minCount ?? 0);
+    if (m.models) return sum + countAllModels(m.models, counts);
+    return sum;
+  }, 0);
+}
+
+// Интерактивный рендер состава отряда с фиксированной стоимостью.
+// Отображает иерархию моделей с кнопками +/− для выбора опциональных миниатюр.
+// Используется для отрядов с единой ценой, но переменным составом (Exaction Squad и т.п.):
+//   - Фиксированные модели (minCount === maxInRoster > 0) → метка «×N (обязательно)», без контролов
+//   - Опциональные/переменные модели → кнопки +/−, максимум ограничен лимитом контейнера
+//   - Контейнеры («9 Exaction Vigilants», «Up to 2:») → заголовок с счётчиком N/max
+function renderFixedCompositionControls(
+  models: Unit[],
+  counts: Record<string, number>,
+  onCountChange: (modelId: string, newVal: number) => void,
+  parentMaxCount?: number,
+): React.ReactNode {
+  // Суммарное количество всех моделей в текущем контексте (для расчёта лимита контейнера)
+  const containerTotal = countAllModels(models, counts);
   return models.map(model => {
     if (model.entryType === undefined && model.models && model.models.length > 0) {
       // Контейнер-группа (например «9 Exaction Vigilants» или «Up to 2:»)
+      const subContainerTotal = countAllModels(model.models, counts);
       return (
         <li key={model.id} className="unit-nested-model-item unit-nested-model-item--group">
           <span className="unit-nested-model-name">{model.name}</span>
+          {model.maxCount !== undefined && (
+            <span className="unit-model-count-label">{subContainerTotal}/{model.maxCount}</span>
+          )}
           <ul className="unit-nested-models">
-            {renderCompositionInfo(model.models)}
+            {renderFixedCompositionControls(model.models, counts, onCountChange, model.maxCount)}
           </ul>
         </li>
       );
     }
-    // Обычная модель [M] — показываем имя и диапазон количества
-    const min = model.minCount;
-    const max = model.maxInRoster;
-    const countStr = (min !== undefined && max !== undefined && min !== max)
-      ? `×${min}–${max}`
-      : max !== undefined
-        ? `×${max}`
-        : min !== undefined
-          ? `×${min}`
-          : '';
+    // Фиксированная модель (minCount === maxInRoster > 0) — без контролов
+    const isFixed = model.minCount !== undefined && model.minCount > 0
+      && model.minCount === model.maxInRoster;
+    if (isFixed) {
+      return (
+        <li key={model.id} className="unit-nested-model-item">
+          <span className="unit-nested-model-name">
+            {model.name}
+            {model.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
+          </span>
+          <span className="unit-model-count-label">×{model.minCount} (обязательно)</span>
+        </li>
+      );
+    }
+    // Переменная / опциональная модель — показываем +/−
+    const minCount = model.minCount ?? 0;
+    const maxPerModel = model.maxInRoster ?? 0;
+    const ownCount = counts[model.id] ?? minCount;
+    // Свободных слотов в родительском контейнере: parentMax − (все остальные модели)
+    const otherInContainer = containerTotal - ownCount;
+    const effectiveMax = parentMaxCount !== undefined
+      ? Math.min(maxPerModel, parentMaxCount - otherInContainer)
+      : maxPerModel;
+    // Нижняя граница: не ниже minCount, но и не выше effectiveMax (если контейнер переполнен)
+    const effectiveCap = Math.max(effectiveMax, minCount);
+    const setCount = (val: number) => {
+      onCountChange(model.id, Math.max(minCount, Math.min(val, effectiveCap)));
+    };
     return (
       <li key={model.id} className="unit-nested-model-item">
         <span className="unit-nested-model-name">
           {model.name}
           {model.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
         </span>
-        {countStr && <span className="unit-model-count-label">{countStr}</span>}
+        <div className="unit-model-count">
+          <span className="unit-model-count-label">Миниатюр:</span>
+          <button
+            type="button"
+            className="unit-model-count-btn"
+            onClick={() => setCount(ownCount - 1)}
+            disabled={ownCount <= minCount}
+            aria-label="Уменьшить количество миниатюр"
+          >−</button>
+          <input
+            type="number"
+            className="unit-model-count-input"
+            value={ownCount}
+            min={minCount}
+            max={effectiveCap}
+            onChange={e => {
+              const v = parseInt(e.target.value, 10);
+              if (!isNaN(v)) setCount(v);
+            }}
+            aria-label="Количество миниатюр"
+          />
+          <button
+            type="button"
+            className="unit-model-count-btn"
+            onClick={() => setCount(ownCount + 1)}
+            disabled={ownCount >= effectiveCap}
+            aria-label="Увеличить количество миниатюр"
+          >+</button>
+        </div>
       </li>
     );
   });
@@ -490,6 +573,11 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     const canAdd = remainingPoints === undefined || displayCost === undefined || displayCost <= remainingPoints;
     const inRoster = countInRoster(unit.id);
     const limitReached = unit.maxInRoster !== undefined && inRoster >= unit.maxInRoster;
+    // Признак отряда с фиксированной стоимостью и переменным составом (Exaction Squad и т.п.)
+    // — состав редактируется через renderFixedCompositionControls, modelCounts передаётся в onAdd
+    const hasVariableChildModels = !!(unit.costBands?.length || findChildModelWithBands(unit.models) !== undefined);
+    const isFixedCompositionUnit = !isNested && unit.entryType === 'unit'
+      && !!(unit.models && unit.models.length > 0) && !hasVariableChildModels;
     return (
       <li key={unit.id} className={`unit-item${isNested ? ' unit-item--nested' : ''}`}>
         <div className="unit-item-top">
@@ -512,7 +600,18 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
               )}
               <button
                 className="btn btn-primary btn-sm"
-                onClick={() => onAdd({ ...unit, cost: displayCost, modelCount: hasBands ? (modelCounts[unit.id] ?? minModels) : childModelCount })}
+                onClick={() => {
+                  // Для отрядов с фиксированным составом передаём modelCounts (выбор опциональных миниатюр)
+                  const compositionCounts = isFixedCompositionUnit
+                    ? buildCompositionSnapshot(unit.models ?? [], modelCounts)
+                    : undefined;
+                  onAdd({
+                    ...unit,
+                    cost: displayCost,
+                    modelCount: hasBands ? (modelCounts[unit.id] ?? minModels) : childModelCount,
+                    ...(compositionCounts ? { modelCounts: compositionCounts } : {}),
+                  });
+                }}
                 disabled={!canAdd || limitReached}
                 aria-label={attachMode ? 'Присоединить' : 'Добавить'}
               >
@@ -554,12 +653,16 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
         )}
         {/* Список моделей:
             — для юнитов с переменной стоимостью (Poxwalkers и т.п.): интерактивные контролы через renderUnitItem
-            — для юнитов с фиксированным составом и единой ценой (Exaction Squad и т.п.): только информационный вид */}
+            — для юнитов с фиксированным составом и единой ценой (Exaction Squad и т.п.): +/− по составу */}
         {!isNested && unit.entryType === 'unit' && unit.models && unit.models.length > 0 && (
           <ul className="unit-nested-models">
-            {(unit.costBands?.length || findChildModelWithBands(unit.models) !== undefined)
+            {hasVariableChildModels
               ? unit.models.map(child => renderUnitItem(child, depth + 1))
-              : renderCompositionInfo(unit.models)
+              : renderFixedCompositionControls(
+                  unit.models,
+                  modelCounts,
+                  (id, val) => setModelCounts(prev => ({ ...prev, [id]: val })),
+                )
             }
           </ul>
         )}

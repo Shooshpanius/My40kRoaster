@@ -860,19 +860,22 @@ body {
   color: var(--text);
 }
 
-/* Группа-секция в информационном отображении состава (без интерактивных контролов) */
+/* Группа-секция в интерактивном отображении состава (Exaction Squad и т.п.) */
+/* Заголовок (имя + счётчик N/max) — в одной строке, вложенный список — на следующей */
 .unit-nested-model-item--group {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.6rem;
   font-weight: 600;
   color: var(--text);
+  padding-bottom: 0.2rem;
 }
 
 .unit-nested-model-item--group > .unit-nested-models {
+  flex: 1 0 100%;
   border-top: none;
-  width: 100%;
   padding-left: 0.75rem;
+  margin-top: 0.15rem;
 }
 
 .unit-nested-model-name {
