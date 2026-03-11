@@ -240,6 +240,10 @@ function gcd(a: number, b: number): number {
 function calcCase4ContainerMax(container: Unit, allContainers: Unit[], counts: Record<string, number>): number {
   const cMax = container.maxCount;
   if (cMax === undefined) return 99;
+  // Контейнер с max ≤ 1 (например, «Princeps») — фиксированный выбор, не зависит от других
+  // контейнеров. Правило «per N» здесь не применяется: наличие Принцепса не определяется
+  // количеством рядовых моделей.
+  if (cMax <= 1) return cMax;
   for (const other of allContainers) {
     if (other.id === container.id) continue;
     const otherMax = other.maxCount;

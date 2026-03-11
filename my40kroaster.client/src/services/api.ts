@@ -358,12 +358,17 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
         // НЕ применяем в рекурсивных вызовах из промежуточных контейнеров (isNestedInContainer=true),
         // чтобы не ломать структуру Case 4 (например, Inquisitorial Agents).
         const directModelChildren = children.filter(c => c.entryType === 'model');
-        const containerChildren = children.filter(isContainerItem);
+        // Учитываем только «значимые» контейнеры (с явным min/maxInRoster), игнорируя
+        // вспомогательные группы без ограничений (например, «Crusade» campaign-блоки),
+        // чтобы они не блокировали создание синтетического контейнера для Pteraxii-подобных юнитов.
+        const meaningfulContainerChildren = children.filter(
+          c => isContainerItem(c) && (c.minInRoster !== undefined || c.maxInRoster !== undefined)
+        );
         const needSyntheticContainer =
           !isNestedInContainer &&
           parentCostBands &&
           directModelChildren.length >= 2 &&
-          containerChildren.length === 0;
+          meaningfulContainerChildren.length === 0;
 
         if (needSyntheticContainer) {
           // «Фиксированные» модели: minInRoster === maxInRoster (всегда одинаковое количество)
