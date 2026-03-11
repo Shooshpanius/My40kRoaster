@@ -548,17 +548,20 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
     // Отличие от Ironstrider: стоимость определяется по суммарному числу моделей через costBands, а не по сумме индивидуальных стоимостей
     // Отличие от Poxwalkers (Case 2): контейнерный узел имеет явное ограничение maxCount (а не только minCount)
     // Поддерживает как несколько типов моделей (Blightlord), так и один тип (Deathshroud Terminators)
-    // Не применяется, если контейнер содержит вложенные контейнеры вместо прямых [M]-узлов
-    // (пример: Fortis Kill Team — «Squad Members» содержит «Additional» и «Core» как субконтейнеры).
-    const containerHasOnlyDirectModels = (multiContainerForAll?.models ?? []).every(m => m.entryType === 'model');
-    if (multiContainerForAll && multiContainerForAll.maxCount !== undefined && unit.costBands?.length && (multiContainerForAll.models?.length ?? 0) >= 1 && containerHasOnlyDirectModels) {
+    // Поддерживает вложенные контейнеры (selectionEntryGroup из API): Plague Marines «Special weapons» (max=2),
+    // Kill Team «Core»/«Additional» и т.п. — рендерятся через renderFixedCompositionControls
+    const containerHasModels = (multiContainerForAll?.models ?? []).some(
+      m => m.entryType === 'model' || (m.entryType === undefined && m.models && m.models.length > 0)
+    );
+    if (multiContainerForAll && multiContainerForAll.maxCount !== undefined && unit.costBands?.length && containerHasModels) {
       const containerModels = multiContainerForAll.models ?? [];
       const minContainer = multiContainerForAll.minCount ?? 1;
       const maxContainer = multiContainerForAll.maxCount ?? 99;
       // Прямые дочерние модели юнита с minCount > 0 — обязательные (например, Blightlord Champion)
       const directModelChildren = (unit.models ?? []).filter(m => m.entryType === 'model' && (m.minCount ?? 0) > 0);
       const mandatoryCount = directModelChildren.reduce((sum, m) => sum + m.minCount!, 0);
-      const containerTotal = containerModels.reduce((sum, m) => sum + (modelCounts[m.id] ?? (m.minCount ?? 0)), 0);
+      // Рекурсивный подсчёт включая модели из вложенных sub-containers (например, Plague Marines «Special weapons»)
+      const containerTotal = countAllModels(containerModels, modelCounts);
       const totalCount = containerTotal + mandatoryCount;
       const cost = getCostForModelCount(unit.costBands, totalCount);
       // maxUnitSize = максимальный размер отряда (контейнер + обязательные)
@@ -568,10 +571,13 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
       const canAdd = isValidTotal && (remainingPoints === undefined || cost <= remainingPoints);
       const inRoster = countInRoster(unit.id);
       const limitReached = unit.maxInRoster !== undefined && inRoster >= unit.maxInRoster;
-      // Ведущие модели (не зависят от числа других) — вверх списка
-      const sortedContainerModels = [
-        ...containerModels.filter(m => isPrimaryContainerModel(m.maxInRoster, maxUnitSize)),
-        ...containerModels.filter(m => !isPrimaryContainerModel(m.maxInRoster, maxUnitSize)),
+      // Прямые [M]-модели — с calcEffectiveMax/isPrimaryContainerModel логикой
+      const directContainerModels = containerModels.filter(m => m.entryType === 'model');
+      // Вложенные контейнеры (selectionEntryGroup из API) — рендерятся через renderFixedCompositionControls
+      const subContainerGroups = containerModels.filter(m => m.entryType === undefined && m.models && m.models.length > 0);
+      const sortedDirectModels = [
+        ...directContainerModels.filter(m => isPrimaryContainerModel(m.maxInRoster, maxUnitSize)),
+        ...directContainerModels.filter(m => !isPrimaryContainerModel(m.maxInRoster, maxUnitSize)),
       ];
       return (
         <li key={unit.id} className="unit-item">
@@ -594,7 +600,8 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
                 onClick={() => onAdd({
                   ...unit,
                   cost,
-                  modelCounts: Object.fromEntries(containerModels.map(m => [m.id, modelCounts[m.id] ?? (m.minCount ?? 0)])),
+                  // buildCompositionSnapshot рекурсивно собирает counts для всех [M] включая sub-container модели
+                  modelCounts: buildCompositionSnapshot(containerModels, modelCounts),
                   modelCount: totalCount,
                 })}
                 disabled={!canAdd || limitReached}
@@ -618,7 +625,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
             </ul>
           )}
           <ul className="unit-nested-models">
-            {sortedContainerModels.map(model => {
+            {sortedDirectModels.map(model => {
               const count = modelCounts[model.id] ?? (model.minCount ?? 0);
               const otherTotal = containerTotal - count;
               const effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, otherTotal, totalCount, maxUnitSize);
@@ -663,6 +670,12 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
                 </li>
               );
             })}
+            {/* Вложенные контейнеры (selectionEntryGroup): «Special weapons», «Heavy weapons» и т.п. */}
+            {subContainerGroups.length > 0 && renderFixedCompositionControls(
+              subContainerGroups,
+              modelCounts,
+              (id, val) => setModelCounts(prev => ({ ...prev, [id]: val })),
+            )}
           </ul>
           {!isValidTotal && (
             <div className="unit-model-count-hint">
