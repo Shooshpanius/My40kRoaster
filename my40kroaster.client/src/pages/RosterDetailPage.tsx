@@ -904,6 +904,8 @@ export function RosterDetailPage() {
                         // maxUnitSize = максимальный размер отряда (контейнер + обязательные)
                         const maxUnitSize = maxContainer + mandatoryCount;
                         const effectiveMaxContainer = maxContainer;
+                        // Фиксированный контейнер (min === max): изменение одной модели требует авто-балансировки другой.
+                        const isFixedContainer = minContainer === maxContainer;
                         // Прямые [M]-модели — с calcEffectiveMax/isPrimaryContainerModel логикой
                         const directContainerModels = containerModels.filter(m => m.entryType === 'model');
                         // Вложенные контейнеры (selectionEntryGroup из API) — рендерятся через renderFixedCompositionControls
@@ -925,8 +927,12 @@ export function RosterDetailPage() {
                           let clamped: number;
                           if (directModel) {
                             // Для прямых [M] — полная логика calcEffectiveMax (per-N ограничения)
-                            const otherTotal = containerTotal - (currentCounts[modelId] ?? (directModel.minCount ?? 0));
-                            let effectiveMax = calcEffectiveMax(directModel.maxInRoster, effectiveMaxContainer, otherTotal, containerTotal + mandatoryCount, maxUnitSize);
+                            // Для фиксированного контейнера: используем минимумы других (без defaultCount),
+                            // иначе базовый счётчик блокирует опциональные модели (chainfist и т.п.).
+                            const hardOtherTotal = isFixedContainer
+                              ? directContainerModels.reduce((s, m) => m.id === modelId ? s : s + (currentCounts[m.id] !== undefined ? currentCounts[m.id] : (m.minCount ?? 0)), 0)
+                              : containerTotal - (currentCounts[modelId] ?? (directModel.minCount ?? 0));
+                            let effectiveMax = calcEffectiveMax(directModel.maxInRoster, effectiveMaxContainer, hardOtherTotal, containerTotal + mandatoryCount, maxUnitSize);
                             // Взаимоисключающая группа: если другая модель из той же группы уже выбрана — блокируем
                             if (directModel.exclusiveGroup) {
                               const selectedId = selectedInExclusiveGroup.get(directModel.exclusiveGroup);
@@ -939,7 +945,30 @@ export function RosterDetailPage() {
                             // поэтому здесь достаточно защиты от отрицательных значений
                             clamped = Math.max(0, val);
                           }
-                          const newCounts = { ...currentCounts, [modelId]: clamped };
+                          let newCounts: Record<string, number> = { ...currentCounts, [modelId]: clamped };
+                          // Авто-балансировка для фиксированных контейнеров: компенсируем изменение
+                          // через «гибкую» модель с наибольшим запасом (currentCount − minCount).
+                          if (isFixedContainer && directContainerModels.find(m => m.id === modelId)) {
+                            const newContainerTotal = countAllModels(containerModels, newCounts);
+                            const excess = newContainerTotal - minContainer;
+                            if (excess !== 0) {
+                              const filler = directContainerModels
+                                .filter(m => m.id !== modelId)
+                                .map(m => {
+                                  const c = newCounts[m.id] ?? m.defaultCount ?? (m.minCount ?? 0);
+                                  const room = excess > 0
+                                    ? c - (m.minCount ?? 0)
+                                    : (m.maxInRoster ?? maxContainer) - c;
+                                  return { id: m.id, c, room };
+                                })
+                                .filter(x => x.room > 0)
+                                .sort((a, b) => b.room - a.room)[0];
+                              if (filler) {
+                                const adj = -Math.sign(excess) * Math.min(Math.abs(excess), filler.room);
+                                newCounts = { ...newCounts, [filler.id]: filler.c + adj };
+                              }
+                            }
+                          }
                           // Рекурсивный пересчёт containerTotal (включая sub-container models)
                           const newContainerTotal = countAllModels(containerModels, newCounts);
                           const newTotal = newContainerTotal + mandatoryCount;
@@ -976,7 +1005,11 @@ export function RosterDetailPage() {
                             <ul className="unit-nested-models unit-nested-models--roster">
                               {sortedDirectModels.map(model => {
                                 const count = currentCounts[model.id] ?? model.defaultCount ?? (model.minCount ?? 0);
-                                const otherTotal = containerTotal - count;
+                                // Для фиксированного контейнера: effectiveMax рассчитывается через минимумы других —
+                                // опциональные модели (chainfist и т.п.) остаются доступны при заполненном базовом счётчике.
+                                const otherTotal = isFixedContainer
+                                  ? directContainerModels.reduce((s, m) => m.id === model.id ? s : s + (currentCounts[m.id] !== undefined ? currentCounts[m.id] : (m.minCount ?? 0)), 0)
+                                  : containerTotal - count;
                                 let effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, otherTotal, containerTotal + mandatoryCount, maxUnitSize);
                                 // Взаимоисключающая группа: если другая модель из той же группы уже выбрана — блокируем
                                 if (model.exclusiveGroup) {

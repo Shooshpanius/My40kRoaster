@@ -572,6 +572,8 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
       // maxUnitSize = максимальный размер отряда (контейнер + обязательные)
       const maxUnitSize = maxContainer + mandatoryCount;
       const effectiveMaxContainer = maxContainer;
+      // Фиксированный контейнер (min === max): добавление одной модели требует уменьшения другой.
+      const isFixedContainer = minContainer === maxContainer;
       const isValidTotal = containerTotal >= minContainer && containerTotal <= effectiveMaxContainer;
       // Проверяем взаимоисключающие группы (data-tether XOR omnispex и т.п.)
       const isXorValid = validateCompositionMinima(unit.models ?? [], modelCounts);
@@ -594,6 +596,53 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
           selectedInExclusiveGroup.set(m.exclusiveGroup, m.id);
         }
       }
+
+      // Обновляет счётчик модели в Case 3 с авто-балансировкой для фиксированных контейнеров.
+      // Для фиксированного контейнера (min === max): добавление одного типа компенсируется
+      // уменьшением «гибкой» модели с наибольшим запасом (currentCount − minCount).
+      // Например, добавление Navis Armsman w/ chainfist → базовый армсмен уменьшается с 7 до 6.
+      const handleCase3ModelCountChange = (modelId: string, val: number) => {
+        const model = directContainerModels.find(m => m.id === modelId);
+        if (!model) return;
+        const currentCount = modelCounts[modelId] ?? model.defaultCount ?? (model.minCount ?? 0);
+        // Для фиксированного контейнера — effectiveMax по минимумам других (без defaultCount),
+        // иначе базовый счётчик по defaultCount блокирует опциональные модели.
+        const hardOtherTotal = isFixedContainer
+          ? directContainerModels.reduce((s, m) => m.id === modelId ? s : s + (modelCounts[m.id] !== undefined ? modelCounts[m.id] : (m.minCount ?? 0)), 0)
+          : containerTotal - currentCount;
+        let effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, hardOtherTotal, totalCount, maxUnitSize);
+        if (model.exclusiveGroup) {
+          const selectedId = selectedInExclusiveGroup.get(model.exclusiveGroup);
+          if (selectedId !== undefined && selectedId !== model.id) effectiveMax = 0;
+        }
+        const clamped = Math.min(effectiveMax, Math.max(model.minCount ?? 0, val));
+        let newCounts: Record<string, number> = { ...modelCounts, [modelId]: clamped };
+        // Авто-балансировка для фиксированных контейнеров: компенсируем переполнение или нехватку
+        // через «гибкую» модель с наибольшим запасом (maxInRoster − minCount).
+        if (isFixedContainer) {
+          const newContainerTotal = countAllModels(containerModels, newCounts);
+          const excess = newContainerTotal - minContainer;
+          if (excess !== 0) {
+            const filler = directContainerModels
+              .filter(m => m.id !== modelId)
+              .map(m => {
+                const c = newCounts[m.id] ?? m.defaultCount ?? (m.minCount ?? 0);
+                const room = excess > 0
+                  ? c - (m.minCount ?? 0)                       // Сколько можно убрать
+                  : (m.maxInRoster ?? maxContainer) - c;        // Сколько можно добавить
+                return { id: m.id, c, room };
+              })
+              .filter(x => x.room > 0)
+              .sort((a, b) => b.room - a.room)[0];
+            if (filler) {
+              const adj = -Math.sign(excess) * Math.min(Math.abs(excess), filler.room);
+              newCounts = { ...newCounts, [filler.id]: filler.c + adj };
+            }
+          }
+        }
+        setModelCounts(newCounts);
+      };
+
       return (
         <li key={unit.id} className="unit-item">
           <div className="unit-item-top">
@@ -642,7 +691,11 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
           <ul className="unit-nested-models">
             {sortedDirectModels.map(model => {
               const count = modelCounts[model.id] ?? model.defaultCount ?? (model.minCount ?? 0);
-              const otherTotal = containerTotal - count;
+              // Для фиксированного контейнера: effectiveMax рассчитывается через минимумы других —
+              // опциональные модели (chainfist и т.п.) остаются доступны при заполненном базовом счётчике.
+              const otherTotal = isFixedContainer
+                ? directContainerModels.reduce((s, m) => m.id === model.id ? s : s + (modelCounts[m.id] !== undefined ? modelCounts[m.id] : (m.minCount ?? 0)), 0)
+                : containerTotal - count;
               let effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, otherTotal, totalCount, maxUnitSize);
               // Взаимоисключающая группа: если другая модель из той же группы уже выбрана — блокируем
               if (model.exclusiveGroup) {
@@ -661,7 +714,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
                     <button
                       type="button"
                       className="unit-model-count-btn"
-                      onClick={() => setModelCounts(prev => ({ ...prev, [model.id]: Math.max(model.minCount ?? 0, count - 1) }))}
+                      onClick={() => handleCase3ModelCountChange(model.id, count - 1)}
                       disabled={count <= (model.minCount ?? 0)}
                       aria-label="Уменьшить количество миниатюр"
                     >−</button>
@@ -673,16 +726,14 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
                       max={effectiveMax}
                       onChange={e => {
                         const v = parseInt(e.target.value, 10);
-                        if (!isNaN(v)) {
-                          setModelCounts(prev => ({ ...prev, [model.id]: Math.min(effectiveMax, Math.max(model.minCount ?? 0, v)) }));
-                        }
+                        if (!isNaN(v)) handleCase3ModelCountChange(model.id, v);
                       }}
                       aria-label="Количество миниатюр"
                     />
                     <button
                       type="button"
                       className="unit-model-count-btn"
-                      onClick={() => setModelCounts(prev => ({ ...prev, [model.id]: count + 1 }))}
+                      onClick={() => handleCase3ModelCountChange(model.id, count + 1)}
                       disabled={count >= effectiveMax}
                       aria-label="Увеличить количество миниатюр"
                     >+</button>
