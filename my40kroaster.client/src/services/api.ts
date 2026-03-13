@@ -549,13 +549,51 @@ export async function getUnits(factionId: string): Promise<Unit[]> {
                     return m;
                   })
                 : nestedRaw;
+
+              // Если контейнер фиксированного размера (min === max), вычисляем defaultCount
+              // для «ведущей» модели, чтобы начальное состояние сразу удовлетворяло
+              // минимуму контейнера. Пример: «9 Armsmen» Imperial Navy Breachers —
+              // base Navis Armsman имеет minCount=5, обязательных специалистов 2,
+              // итого defaults=7 < 9 (min контейнера) → defaultCount=7 у base-модели.
+              const cFixedMin = child.minInRoster !== undefined ? toNum(child.minInRoster) : undefined;
+              const cFixedMax = child.maxInRoster !== undefined ? toNum(child.maxInRoster) : undefined;
+              let finalNested = nested;
+              if (cFixedMin !== undefined && cFixedMax !== undefined && cFixedMin === cFixedMax && cFixedMin > 0) {
+                const baseTotal = nested.reduce((s, m) => s + (m.minCount ?? 0), 0);
+                const deficit = cFixedMin - baseTotal;
+                if (deficit > 0) {
+                  // Ищем модель с наибольшим запасом (maxInRoster − minCount) — она станет «заполнителем».
+                  // Если maxInRoster не задан — считаем модель неограниченной (может заполнить весь контейнер).
+                  let bestIdx = -1;
+                  let bestRoom = 0;
+                  for (let i = 0; i < nested.length; i++) {
+                    const m = nested[i];
+                    if (m.entryType === 'model') {
+                      const maxForModel = m.maxInRoster ?? cFixedMin;
+                      const room = maxForModel - (m.minCount ?? 0);
+                      if (room > bestRoom) { bestRoom = room; bestIdx = i; }
+                    }
+                  }
+                  if (bestIdx >= 0) {
+                    const primary = nested[bestIdx];
+                    const currentMin = primary.minCount ?? 0;
+                    // Если maxInRoster не задан — считаем, что дефицит может быть покрыт полностью
+                    const maxForPrimary = primary.maxInRoster ?? (currentMin + deficit);
+                    const newDefault = Math.min(maxForPrimary, currentMin + deficit);
+                    if (newDefault > currentMin) {
+                      finalNested = nested.map((m, i) => i === bestIdx ? { ...m, defaultCount: newDefault } : m);
+                    }
+                  }
+                }
+              }
+
               result.push({
                 id: child.id ?? child.name ?? '',
                 name: child.name ?? '',
                 category: '',
                 cost: undefined,
                 entryType: undefined,
-                models: nested,
+                models: finalNested,
                 // Сохраняем ограничения контейнера: используются для отрядов с несколькими типами моделей
                 minCount: child.minInRoster !== undefined ? toNum(child.minInRoster) : undefined,
                 maxCount: child.maxInRoster !== undefined ? toNum(child.maxInRoster) : undefined,

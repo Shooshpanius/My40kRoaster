@@ -129,10 +129,11 @@ function calcEffectiveMax(
 }
 
 // Рекурсивно считает сумму счётчиков всех [M]-узлов в дереве (включая вложенные контейнеры).
-// Для моделей без явной записи в counts берём minCount ?? 0 (согласованно с ownCount в контролах).
+// Для моделей без явной записи в counts берём defaultCount ?? minCount ?? 0 как базу —
+// defaultCount учитывает минимум контейнера (например, base Navis Armsman по умолчанию = 7, не 5).
 function countAllModels(models: Unit[], counts: Record<string, number>): number {
   return models.reduce((sum, m) => {
-    if (m.entryType === 'model') return sum + (counts[m.id] ?? m.minCount ?? 0);
+    if (m.entryType === 'model') return sum + (counts[m.id] ?? m.defaultCount ?? m.minCount ?? 0);
     if (m.models) return sum + countAllModels(m.models, counts);
     return sum;
   }, 0);
@@ -195,7 +196,7 @@ function renderFixedCompositionControls(
     }
     const minCount = model.minCount ?? 0;
     const maxPerModel = model.maxInRoster ?? 0;
-    const ownCount = counts[model.id] ?? minCount;
+    const ownCount = counts[model.id] ?? model.defaultCount ?? minCount;
     const otherInContainer = containerTotal - ownCount;
     let effectiveMax = parentMaxCount !== undefined
       ? Math.min(maxPerModel, parentMaxCount - otherInContainer)
@@ -974,7 +975,7 @@ export function RosterDetailPage() {
                             )}
                             <ul className="unit-nested-models unit-nested-models--roster">
                               {sortedDirectModels.map(model => {
-                                const count = currentCounts[model.id] ?? (model.minCount ?? 0);
+                                const count = currentCounts[model.id] ?? model.defaultCount ?? (model.minCount ?? 0);
                                 const otherTotal = containerTotal - count;
                                 let effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, otherTotal, containerTotal + mandatoryCount, maxUnitSize);
                                 // Взаимоисключающая группа: если другая модель из той же группы уже выбрана — блокируем

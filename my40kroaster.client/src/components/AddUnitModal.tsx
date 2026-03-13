@@ -34,12 +34,12 @@ function findChildModelWithBands(models?: Unit[]): Unit | undefined {
   return undefined;
 }
 
-// Рекурсивно собирает счётчики моделей для снимка состава: counts[id] ?? minCount ?? 0
+// Рекурсивно собирает счётчики моделей для снимка состава: counts[id] ?? defaultCount ?? minCount ?? 0
 function buildCompositionSnapshot(models: Unit[], counts: Record<string, number>): Record<string, number> {
   const result: Record<string, number> = {};
   for (const m of models) {
     if (m.entryType === 'model') {
-      result[m.id] = counts[m.id] ?? m.minCount ?? 0;
+      result[m.id] = counts[m.id] ?? m.defaultCount ?? m.minCount ?? 0;
     }
     if (m.models) Object.assign(result, buildCompositionSnapshot(m.models, counts));
   }
@@ -47,11 +47,11 @@ function buildCompositionSnapshot(models: Unit[], counts: Record<string, number>
 }
 
 // Рекурсивно считает сумму счётчиков всех [M]-узлов в дереве (включая вложенные контейнеры).
-// Для моделей, ещё не затронутых пользователем (нет в counts), берём minCount ?? 0 как базу —
-// это делает счётчик контейнера согласованным с отображаемыми значениями (shotgun min=4 → считается 4).
+// Для моделей, ещё не затронутых пользователем (нет в counts), берём defaultCount ?? minCount ?? 0 как базу —
+// defaultCount учитывает минимум контейнера (например, base Navis Armsman по умолчанию = 7, не 5).
 function countAllModels(models: Unit[], counts: Record<string, number>): number {
   return models.reduce((sum, m) => {
-    if (m.entryType === 'model') return sum + (counts[m.id] ?? m.minCount ?? 0);
+    if (m.entryType === 'model') return sum + (counts[m.id] ?? m.defaultCount ?? m.minCount ?? 0);
     if (m.models) return sum + countAllModels(m.models, counts);
     return sum;
   }, 0);
@@ -144,7 +144,7 @@ function renderFixedCompositionControls(
     // Переменная / опциональная модель — показываем +/−
     const minCount = model.minCount ?? 0;
     const maxPerModel = model.maxInRoster ?? 0;
-    const ownCount = counts[model.id] ?? minCount;
+    const ownCount = counts[model.id] ?? model.defaultCount ?? minCount;
     // Свободных слотов в родительском контейнере: parentMax − (все остальные модели)
     const otherInContainer = containerTotal - ownCount;
     let effectiveMax = parentMaxCount !== undefined
@@ -641,7 +641,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
           )}
           <ul className="unit-nested-models">
             {sortedDirectModels.map(model => {
-              const count = modelCounts[model.id] ?? (model.minCount ?? 0);
+              const count = modelCounts[model.id] ?? model.defaultCount ?? (model.minCount ?? 0);
               const otherTotal = containerTotal - count;
               let effectiveMax = calcEffectiveMax(model.maxInRoster, effectiveMaxContainer, otherTotal, totalCount, maxUnitSize);
               // Взаимоисключающая группа: если другая модель из той же группы уже выбрана — блокируем
