@@ -380,7 +380,7 @@ export function RosterDetailPage() {
   // Загружаем список детачментов для фракции при открытии режима редактирования
   useEffect(() => {
     if (!editing || !roster?.factionId) return;
-    api.getDetachments(roster.factionId).then(setDetachments).catch(() => setDetachments([]));
+    api.getDetachments(roster.factionId).then(setDetachments).catch((err) => { console.error('Failed to load detachments:', err); setDetachments([]); });
   }, [editing, roster?.factionId]);
 
   const persistUnits = useCallback((groups: UnitGroup[]) => {

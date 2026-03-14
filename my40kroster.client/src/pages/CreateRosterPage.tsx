@@ -38,7 +38,8 @@ export function CreateRosterPage() {
     setLoadingDetachments(true);
     getDetachments(selectedFaction.id).then(d => {
       setDetachments(d);
-    }).catch(() => {
+    }).catch((err) => {
+      console.error('Failed to load detachments:', err);
       setDetachments([]);
     }).finally(() => {
       setLoadingDetachments(false);
@@ -167,7 +168,7 @@ export function CreateRosterPage() {
           <div className="form-group">
             <label>Детачмент</label>
             {loadingDetachments ? (
-              <div className="loading">Загрузка детачментов...</div>
+              <div className="loading" role="status" aria-live="polite">Загрузка детачментов...</div>
             ) : detachments.length > 0 ? (
               <select
                 value={detachmentName}
