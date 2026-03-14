@@ -348,6 +348,8 @@ export function RosterDetailPage() {
   const [name, setName] = useState(roster?.name || '');
   const [pointsLimit, setPointsLimit] = useState(roster?.pointsLimit || 2000);
   const [allowLegends, setAllowLegends] = useState(roster?.allowLegends ?? false);
+  // Состояние для выбора детачмента
+  const [detachmentName, setDetachmentName] = useState(roster?.detachmentName || '');
   const [saving, setSaving] = useState(false);
   const [unitAddTarget, setUnitAddTarget] = useState<{ groupId: string | null }>({ groupId: null });
   const [addingUnit, setAddingUnit] = useState(false);
@@ -398,7 +400,7 @@ export function RosterDetailPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await editRoster(roster.id, { name, pointsLimit, allowLegends });
+      await editRoster(roster.id, { name, pointsLimit, allowLegends, detachmentName: detachmentName.trim() || undefined });
       setEditing(false);
     } finally {
       setSaving(false);
@@ -417,7 +419,7 @@ export function RosterDetailPage() {
         <button onClick={() => navigate('/')} className="btn btn-back">← Назад</button>
         <div className="page-header-actions">
           <button
-            onClick={() => { setEditing(!editing); setName(roster.name); setPointsLimit(roster.pointsLimit); setAllowLegends(roster.allowLegends ?? false); }}
+            onClick={() => { setEditing(!editing); setName(roster.name); setPointsLimit(roster.pointsLimit); setAllowLegends(roster.allowLegends ?? false); setDetachmentName(roster.detachmentName || ''); }}
             className="btn btn-secondary btn-sm"
           >
             {editing ? 'Отмена' : 'Редактировать'}
@@ -446,6 +448,16 @@ export function RosterDetailPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="form-group">
+            <label>Детачмент</label>
+            <input
+              type="text"
+              value={detachmentName}
+              onChange={e => setDetachmentName(e.target.value)}
+              placeholder="Например: Gladius Task Force"
+              className="form-input"
+            />
           </div>
           <div className="form-group">
             <label className={`toggle-row${hasLegendsUnits ? ' toggle-row--disabled' : ''}`}>
@@ -478,6 +490,12 @@ export function RosterDetailPage() {
               <span className="meta-label">Фракция</span>
               <span className="meta-value">⚔️ {roster.factionName}</span>
             </div>
+            {roster.detachmentName && (
+              <div className="meta-item">
+                <span className="meta-label">Детачмент</span>
+                <span className="meta-value">🛡️ {roster.detachmentName}</span>
+              </div>
+            )}
             <div className="meta-item">
               <span className="meta-label">Лимит очков</span>
               <span className="meta-value points-badge">{roster.pointsLimit} очков</span>

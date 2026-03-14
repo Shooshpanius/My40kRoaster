@@ -19,6 +19,8 @@ export function CreateRosterPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  // Состояние для ввода детачмента
+  const [detachmentName, setDetachmentName] = useState('');
 
   useEffect(() => {
     getFactions().then(f => {
@@ -46,6 +48,7 @@ export function CreateRosterPage() {
         factionId: selectedFaction.id,
         factionName: selectedFaction.name,
         pointsLimit: effectivePoints,
+        detachmentName: detachmentName.trim() || undefined,
       });
       navigate(`/roster/${roster.id}`);
     } catch {
@@ -142,6 +145,17 @@ export function CreateRosterPage() {
               Выбрана: <strong>{selectedFaction.name}</strong>
             </div>
           )}
+        </div>
+
+        <div className="form-group">
+          <label>Детачмент</label>
+          <input
+            type="text"
+            value={detachmentName}
+            onChange={e => setDetachmentName(e.target.value)}
+            placeholder="Например: Gladius Task Force"
+            className="form-input"
+          />
         </div>
 
         <button
