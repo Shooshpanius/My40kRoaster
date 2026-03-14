@@ -85,6 +85,15 @@ using (var scope = app.Services.CreateScope())
     db.Database.EnsureCreated();
 }
 
+// Разрешаем unload-события: отказываемся от Chrome-трейла по устареванию unload,
+// чтобы браузер не блокировал обработчики unload и не выводил [Violation] в консоль.
+app.Use(async (context, next) =>
+{
+    // Заголовок нужно выставить до вызова next(), пока ответ ещё не отправлен.
+    context.Response.Headers.Append("Permissions-Policy", "unload=*");
+    await next(context);
+});
+
 app.UseDefaultFiles();
 app.MapStaticAssets();
 
