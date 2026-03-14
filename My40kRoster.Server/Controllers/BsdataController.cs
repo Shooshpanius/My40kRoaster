@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace My40kRoaster.Server.Controllers
+namespace My40kRoster.Server.Controllers
 {
     [ApiController]
     [Route("api/bsdata")]

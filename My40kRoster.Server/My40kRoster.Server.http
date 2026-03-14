@@ -1,0 +1,6 @@
+@My40kRoster.Server_HostAddress = http://localhost:5022
+
+GET {{My40kRoster.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

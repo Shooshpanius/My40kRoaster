@@ -1,13 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using My40kRoaster.Server.Data;
-using My40kRoaster.Server.DTOs;
-using My40kRoaster.Server.Models;
+using My40kRoster.Server.Data;
+using My40kRoster.Server.DTOs;
+using My40kRoster.Server.Models;
 using System.Security.Claims;
 using System.Text.Json;
 
-namespace My40kRoaster.Server.Controllers
+namespace My40kRoster.Server.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]

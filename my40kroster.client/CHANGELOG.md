@@ -4,11 +4,11 @@
 - create-vite
 
 Для создания этого проекта были использованы следующие шаги:
-- Создайте проект React с помощью create-vite: `npm init --yes vite@latest my40kroaster.client -- --template=react-ts  --no-rolldown --no-immediate`.
+- Создайте проект React с помощью create-vite: `npm init --yes vite@latest my40kroster.client -- --template=react-ts  --no-rolldown --no-immediate`.
 - Обновите `vite.config.ts`, чтобы настроить проксирование и сертификаты.
 - Добавьте`@type/node` для ввода текста `vite.config.js`.
 - Обновите компонент `App` для получения и отображения сведений о погоде.
-- Создание файла проекта (`my40kroaster.client.esproj`).
+- Создание файла проекта (`my40kroster.client.esproj`).
 - Создайте `launch.json`, чтобы включить отладку.
 - Добавить проект в решение.
 - Обновите конечную точку прокси-сервера, чтобы она стала конечной точкой внутреннего сервера.

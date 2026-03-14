@@ -13,18 +13,18 @@ RUN apt-get -y install nodejs
 FROM with-node AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY .  My40kRoaster.Server/
-RUN dotnet restore "./My40kRoaster.Server/My40kRoaster.Server.csproj"
+COPY .  My40kRoster.Server/
+RUN dotnet restore "./My40kRoster.Server/My40kRoster.Server.csproj"
 COPY . .
-WORKDIR "/src/My40kRoaster.Server"
-RUN dotnet build "./My40kRoaster.Server.csproj" -c $BUILD_CONFIGURATION -o /app/build
+WORKDIR "/src/My40kRoster.Server"
+RUN dotnet build "./My40kRoster.Server.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./My40kRoaster.Server.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./My40kRoster.Server.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-ENTRYPOINT ["dotnet", "My40kRoaster.Server.dll"]
+ENTRYPOINT ["dotnet", "My40kRoster.Server.dll"]

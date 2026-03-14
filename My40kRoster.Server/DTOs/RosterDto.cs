@@ -1,4 +1,4 @@
-namespace My40kRoaster.Server.DTOs
+namespace My40kRoster.Server.DTOs
 {
     public class RosterDto
     {

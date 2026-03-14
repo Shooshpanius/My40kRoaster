@@ -1,13 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using My40kRoaster.Server.Data;
-using My40kRoaster.Server.Models;
+using My40kRoster.Server.Data;
+using My40kRoster.Server.Models;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 
-namespace My40kRoaster.Server.Controllers
+namespace My40kRoster.Server.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
@@ -68,8 +68,8 @@ namespace My40kRoaster.Server.Controllers
                 new Claim(ClaimTypes.Name, user.Name)
             };
             var token = new JwtSecurityToken(
-                issuer: config["Jwt:Issuer"] ?? "My40kRoaster",
-                audience: config["Jwt:Audience"] ?? "My40kRoaster",
+                issuer: config["Jwt:Issuer"] ?? "My40kRoster",
+                audience: config["Jwt:Audience"] ?? "My40kRoster",
                 claims: claims,
                 expires: DateTime.UtcNow.AddDays(30),
                 signingCredentials: creds

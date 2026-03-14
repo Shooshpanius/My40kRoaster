@@ -1,4 +1,4 @@
-# My40kRoaster
+# Too Old Recruit
 
 <div align="center">
 
@@ -21,7 +21,7 @@
 
 ## О проекте
 
-**My40kRoaster** позволяет игрокам составлять армейские ростеры для игры в Warhammer 40,000 прямо в браузере — без установки дополнительного ПО. Приложение загружает актуальные данные об отрядах и фракциях из открытой базы данных [BSData](https://github.com/BSData) через прокси-API, предоставляемое сервисом [wh40kcards.ru](https://wh40kcards.ru).
+**Too Old Recruit** позволяет игрокам составлять армейские ростеры для игры в Warhammer 40,000 прямо в браузере — без установки дополнительного ПО. Приложение загружает актуальные данные об отрядах и фракциях из открытой базы данных [BSData](https://github.com/BSData) через прокси-API, предоставляемое сервисом [wh40kcards.ru](https://wh40kcards.ru).
 
 > **🌐 Попробовать прямо сейчас:** [**wh40kcards.ru**](https://wh40kcards.ru/)
 
@@ -37,14 +37,14 @@
 ## Архитектура
 
 ```
-My40kRoaster/
-├── My40kRoaster.Server/   # Backend: ASP.NET Core Web API (.NET 9)
+My40kRoster/
+├── My40kRoster.Server/   # Backend: ASP.NET Core Web API (.NET 9)
 │   ├── Controllers/       # REST API: Auth, Rosters, BSData-прокси
 │   ├── Data/              # AppDbContext (Entity Framework Core)
 │   ├── Models/            # Сущности БД (User, Roster)
 │   ├── DTOs/              # Data Transfer Objects
 │   └── Dockerfile
-├── my40kroaster.client/   # Frontend: React 19 + TypeScript + Vite
+├── my40kroster.client/   # Frontend: React 19 + TypeScript + Vite
 │   ├── src/
 │   │   ├── pages/         # Страницы: Home, CreateRoster, RosterDetail
 │   │   ├── components/    # Компоненты: AddUnitModal и др.
@@ -85,13 +85,13 @@ Google Client ID нужен как фронтенду (для отображен
 
 **Фронтенд** — скопируйте `.env.example` в `.env` и заполните значение:
 ```bash
-cp my40kroaster.client/.env.example my40kroaster.client/.env
-# Отредактируйте my40kroaster.client/.env, вставив ваш Client ID
+cp my40kroster.client/.env.example my40kroster.client/.env
+# Отредактируйте my40kroster.client/.env, вставив ваш Client ID
 ```
 
 **Бэкенд** — скопируйте `appsettings.Development.json.example` в `appsettings.Development.json` и заполните:
 ```bash
-cp My40kRoaster.Server/appsettings.Development.json.example My40kRoaster.Server/appsettings.Development.json
+cp My40kRoster.Server/appsettings.Development.json.example My40kRoster.Server/appsettings.Development.json
 # Отредактируйте appsettings.Development.json, вставив ваш Client ID
 ```
 
@@ -118,7 +118,7 @@ cp My40kRoaster.Server/appsettings.Development.json.example My40kRoaster.Server/
 3. Запустить бэкенд:
 
    ```bash
-   cd My40kRoaster.Server
+   cd My40kRoster.Server
    dotnet run
    ```
 
@@ -127,7 +127,7 @@ cp My40kRoaster.Server/appsettings.Development.json.example My40kRoaster.Server/
 4. Запустить фронтенд:
 
    ```bash
-   cd my40kroaster.client
+   cd my40kroster.client
    npm install
    npm run dev
    ```

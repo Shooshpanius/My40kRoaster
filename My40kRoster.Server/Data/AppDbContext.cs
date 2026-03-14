@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using My40kRoaster.Server.Models;
+using My40kRoster.Server.Models;
 
-namespace My40kRoaster.Server.Data
+namespace My40kRoster.Server.Data
 {
     public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
     {
