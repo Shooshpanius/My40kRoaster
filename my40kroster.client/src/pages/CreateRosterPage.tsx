@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRosters } from '../contexts/RosterContext';
-import { getFactions, getDetachments } from '../services/api';
+import { getFactions } from '../services/api';
 import type { Faction } from '../types';
 
 const POINTS_OPTIONS = [500, 1000, 1500, 2000, 2500];
@@ -19,10 +19,8 @@ export function CreateRosterPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  // Состояние для выбора детачмента
+  // Состояние для детачмента (выбор временно отключён — API не готов)
   const [detachmentName, setDetachmentName] = useState('');
-  const [availableDetachments, setAvailableDetachments] = useState<string[]>([]);
-  const [loadingDetachments, setLoadingDetachments] = useState(false);
 
   useEffect(() => {
     getFactions().then(f => {
@@ -31,18 +29,11 @@ export function CreateRosterPage() {
     });
   }, []);
 
-  // При выборе фракции подгружаем список детачментов и сбрасываем текущий выбор
+  // При выборе фракции сбрасываем название детачмента
   useEffect(() => {
     if (!selectedFaction) {
-      setAvailableDetachments([]);
       setDetachmentName('');
-      return;
     }
-    setLoadingDetachments(true);
-    setDetachmentName('');
-    getDetachments(selectedFaction.id)
-      .then(setAvailableDetachments)
-      .finally(() => setLoadingDetachments(false));
   }, [selectedFaction]);
 
   const filteredFactions = factions.filter(f =>
@@ -162,36 +153,6 @@ export function CreateRosterPage() {
             </div>
           )}
         </div>
-
-        {selectedFaction && (
-          <div className="form-group">
-            <label>Детачмент</label>
-            {loadingDetachments ? (
-              <div className="form-hint">Загрузка детачментов...</div>
-            ) : availableDetachments.length > 0 ? (
-              // Список детачментов успешно загружен — показываем выпадающий список
-              <select
-                value={detachmentName}
-                onChange={e => setDetachmentName(e.target.value)}
-                className="form-input"
-              >
-                <option value="">— Не выбрано —</option>
-                {availableDetachments.map(d => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            ) : (
-              // Детачменты не найдены — fallback на текстовый ввод
-              <input
-                type="text"
-                value={detachmentName}
-                onChange={e => setDetachmentName(e.target.value)}
-                placeholder="Например: Gladius Task Force"
-                className="form-input"
-              />
-            )}
-          </div>
-        )}
 
         <button
           type="submit"
