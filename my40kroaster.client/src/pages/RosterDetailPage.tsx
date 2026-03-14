@@ -983,6 +983,8 @@ export function RosterDetailPage() {
                                   if (selectedId !== undefined && selectedId !== model.id) effectiveMax = 0;
                                 }
                                 const isPrimary = isPrimaryContainerModel(model.maxInRoster, maxUnitSize);
+                                // Фиксированная модель (min === max > 0): отображаем как обязательную без контролов
+                                const isFixed = model.minCount !== undefined && model.minCount > 0 && model.minCount === model.maxInRoster;
                                 // Бинарный выбор (0 или 1): чекбокс вместо +/−
                                 const isBinary = (model.minCount ?? 0) === 0 && (model.maxInRoster ?? 0) === 1;
                                 return (
@@ -991,7 +993,9 @@ export function RosterDetailPage() {
                                       {model.name}
                                       <span className="unit-type-badge">[M]</span>
                                     </span>
-                                    {isBinary ? (
+                                    {isFixed ? (
+                                      <span className="unit-model-count-label">×{model.minCount}</span>
+                                    ) : isBinary ? (
                                       <label className="unit-model-checkbox">
                                         <input
                                           type="checkbox"
