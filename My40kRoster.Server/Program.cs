@@ -78,11 +78,29 @@ builder.Services.AddHttpClient("wh40kapi", client =>
 
 var app = builder.Build();
 
-// Создаём схему БД при первом запуске
+// Создаём схему БД при первом запуске и применяем недостающие столбцы
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var schemaLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("SchemaUpgrade");
     db.Database.EnsureCreated();
+
+    // EnsureCreated не обновляет существующую схему — добавляем недостающие столбцы вручную.
+    // Проект использует MySQL; ошибка «Duplicate column name» означает, что столбец уже есть — это ожидаемо.
+    void TryAddColumn(string sql)
+    {
+        try { db.Database.ExecuteSqlRaw(sql); }
+        catch (Exception ex)
+        {
+            // Логируем предупреждение, но не прерываем запуск: «Duplicate column» — штатная ситуация,
+            // остальные ошибки также не должны блокировать старт при уже корректной схеме.
+            schemaLogger.LogWarning("Миграция столбца не выполнена (возможно, уже существует): {Message}", ex.Message);
+        }
+    }
+
+    TryAddColumn("ALTER TABLE `Rosters` ADD COLUMN `UnitsJson` LONGTEXT NOT NULL DEFAULT '[]'");
+    TryAddColumn("ALTER TABLE `Rosters` ADD COLUMN `AllowLegends` TINYINT(1) NOT NULL DEFAULT 0");
+    TryAddColumn("ALTER TABLE `Rosters` ADD COLUMN `DetachmentName` TEXT NULL");
 }
 
 // Разрешаем unload-события: отказываемся от Chrome-трейла по устареванию unload,
