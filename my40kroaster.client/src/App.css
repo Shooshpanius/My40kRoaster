@@ -692,6 +692,11 @@ body {
   pointer-events: none;
 }
 
+/* Необязательный (изменяемый) чекбокс: зелёный цвет, чтобы визуально отличался от обязательного */
+.unit-model-checkbox--optional input[type="checkbox"] {
+  accent-color: var(--success, #4caf50);
+}
+
 .unit-model-count-label {
   font-size: 0.8rem;
   color: var(--text-muted, #888);

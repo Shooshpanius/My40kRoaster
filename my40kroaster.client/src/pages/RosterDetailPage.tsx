@@ -228,7 +228,7 @@ function renderFixedCompositionControls(
           {model.entryType === 'model' && <span className="unit-type-badge">[M]</span>}
         </span>
         {isBinary ? (
-          <label className="unit-model-checkbox">
+          <label className="unit-model-checkbox unit-model-checkbox--optional">
             <input
               type="checkbox"
               checked={ownCount > 0}
@@ -825,7 +825,7 @@ export function RosterDetailPage() {
                                             <span className="unit-type-badge">[M]</span>
                                           </span>
                                           {isBinary ? (
-                                            <label className="unit-model-checkbox">
+                                            <label className="unit-model-checkbox unit-model-checkbox--optional">
                                               <input
                                                 type="checkbox"
                                                 checked={count > 0}
@@ -1008,7 +1008,7 @@ export function RosterDetailPage() {
                                         <span className="unit-model-count-label">×{model.minCount}</span>
                                       )
                                     ) : isBinary ? (
-                                      <label className="unit-model-checkbox">
+                                      <label className="unit-model-checkbox unit-model-checkbox--optional">
                                         <input
                                           type="checkbox"
                                           checked={count > 0}
@@ -1122,7 +1122,7 @@ export function RosterDetailPage() {
                                     <span className="unit-cost">{model.cost} pts</span>
                                   )}
                                   {isBinary ? (
-                                    <label className="unit-model-checkbox">
+                                    <label className="unit-model-checkbox unit-model-checkbox--optional">
                                       <input
                                         type="checkbox"
                                         checked={count > 0}
