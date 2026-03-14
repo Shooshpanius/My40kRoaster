@@ -1,6 +1,6 @@
   back40roster:
     container_name: back40roster
-    image: my40kroaster_server:local
+    image: my40kroster_server:local
     restart: always
     environment:
       ConnectionStrings__DefaultConnection: Server=*;Port=*;Database=*;User=*;Password=*
@@ -11,7 +11,7 @@
 
   front40roster:
     container_name: front40roster
-    image: my40kroaster_front:local
+    image: my40kroster_front:local
     restart: always
     environment:
       VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}

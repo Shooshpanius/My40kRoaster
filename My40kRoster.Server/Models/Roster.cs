@@ -1,4 +1,4 @@
-namespace My40kRoaster.Server.Models
+namespace My40kRoster.Server.Models
 {
     public class Roster
     {

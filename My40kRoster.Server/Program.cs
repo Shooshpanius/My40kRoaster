@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using My40kRoaster.Server.Data;
+using My40kRoster.Server.Data;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -49,8 +49,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "My40kRoaster",
-            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "My40kRoaster",
+            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "My40kRoster",
+            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "My40kRoster",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });

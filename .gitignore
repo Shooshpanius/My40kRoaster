@@ -361,7 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/My40kRoaster.Server/appsettings.Development.json
+/My40kRoster.Server/appsettings.Development.json
 
 # SQLite файлы базы данных — не хранить в репозитории
 *.db

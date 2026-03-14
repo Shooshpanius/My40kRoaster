@@ -1,6 +1,6 @@
-# my40kroaster.client
+# my40kroster.client
 
-Фронтенд-часть приложения **My40kRoaster** — React 19 + TypeScript + Vite.
+Фронтенд-часть приложения **Too Old Recruit** — React 19 + TypeScript + Vite.
 
 ## Быстрый старт
 
