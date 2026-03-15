@@ -8,10 +8,13 @@
   `maxInRoster=3` и модификатором скрытия без Houndpack Lance экспортируется в `/unitsTree`.
 - ✅ **Фронтенд обновлён** — добавлена функция `isHiddenByDetachment()`, поле `minInRoster` в `Unit`,
   поддержка в `applyDetachmentModifiers` и `buildChildTree`.
-- ❌ **Ограничение** — юниты War Dog имеют `entryType: "model"` (а не `"unit"`), поэтому их дочерние
-  узлы (включая "Houndpack Lance Character") не обрабатываются в `buildChildTree` фронтенда.
-- ❌ **Отсутствует** — прямой модификатор `minInRoster=3` для юнитов War Dog (per-unit, не per-upgrade).
-- ❌ **Отсутствует** — способ отличить min-ограничение от max-ограничения в `modifierGroups`.
+- ✅ **Проблема 1 РЕШЕНА** (wh40kAPI e28e595) — модификатор `type="set"` для GUID-полей теперь
+  различается как `"set-min"` и `"set-max"` в зависимости от типа BSData constraint.
+- ✅ **Проблема 2 РЕШЕНА** (wh40kAPI e28e595) — добавлено поле `requiredUpgrades` в `/unitsTree`.
+  Для `model`-типов (War Dog) с upgrade-детьми с `minInRoster > 0` и detachment-условием.
+- ✅ **Фронтенд обновлён** (TooOldRecruit) — `api.ts` использует `requiredUpgrades` для вычисления
+  `minInRoster` на юните когда выбран совпадающий детачмент.
+- ❓ **Проблема 3** — прямой `minInRoster` для War Dog при Houndpack Lance (если существует в BSData)
 
 ---
 

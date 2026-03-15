@@ -225,6 +225,17 @@ interface ApiUnitItem {
   // До реализации этого динамического подхода XOR обеспечивается через
   // статическую таблицу CONTAINER_EXCLUSIVE_GROUPS ниже.
   modifierGroups?: Array<{ id?: number; unitId?: string; modifiers?: string | null; conditions?: string | null }>;
+  // Upgrade-дочерние записи с ограничениями minInRoster > 0 и детачмент-условием.
+  // Добавлено в ответ /fractions/{id}/unitsTree после обновления wh40kAPI (коммит e28e595).
+  // Заполняется для записей типа "model", у которых есть upgrade-дети, скрытые без определённого детачмента.
+  // Пример: War Dog → [{name:"Houndpack Lance Character", minInRoster:3, maxInRoster:3, requiredDetachmentId:"6cb5..."}]
+  requiredUpgrades?: Array<{
+    id?: string;
+    name?: string;
+    minInRoster?: number | null;
+    maxInRoster?: number | null;
+    requiredDetachmentId?: string | null;
+  }>;
 }
 
 const DEFAULT_FACTIONS: Faction[] = [
@@ -697,6 +708,24 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
         item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
       if (depth === 0) {
         ({ category, maxInRoster, minInRoster } = applyDetachmentModifiers(item, detachmentId, category, maxInRoster, minInRoster));
+
+        // Дополнительный источник minInRoster — поле requiredUpgrades из wh40kAPI (коммит e28e595).
+        // Для записей типа "model" (например War Dog), у которых upgrade-дочерние записи имеют
+        // roster-wide min-ограничение при определённом детачменте, wh40kAPI возвращает
+        // requiredUpgrades вместо обычных modifierGroups, т.к. children у "model" не обрабатывает buildChildTree.
+        // minInRoster здесь — это фактически «минимальное количество отрядов данного типа в ростере»
+        // (следствие: если нужно 3 из них с Houndpack Lance Character, то нужно минимум 3 таких отряда).
+        if (detachmentId && item.requiredUpgrades?.length) {
+          const matchingUpgrade = item.requiredUpgrades.find(
+            u => u.requiredDetachmentId === detachmentId
+          );
+          if (matchingUpgrade?.minInRoster != null) {
+            const reqMin = Number(matchingUpgrade.minInRoster);
+            if (isFinite(reqMin) && reqMin > 0) {
+              minInRoster = Math.max(minInRoster ?? 0, reqMin);
+            }
+          }
+        }
       }
 
       // Парсим встроенные диапазоны стоимости (из unitsTree)
