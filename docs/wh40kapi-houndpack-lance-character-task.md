@@ -14,7 +14,10 @@
   Для `model`-типов (War Dog) с upgrade-детьми с `minInRoster > 0` и detachment-условием.
 - ✅ **Фронтенд обновлён** (TooOldRecruit) — `api.ts` использует `requiredUpgrades` для вычисления
   `minInRoster` на юните когда выбран совпадающий детачмент.
-- ❓ **Проблема 3** — прямой `minInRoster` для War Dog при Houndpack Lance (если существует в BSData)
+- ✅ **Проблема 3 РЕШЕНА** (TooOldRecruit) — добавлена функция `getRequiredDetachmentId()` в `api.ts`,
+  которая напрямую читает дочерние upgrade-записи с детачмент-условным скрытием (`children`).
+  `mapItem()` извлекает такие апгрейды как `detachmentUpgrades` и выставляет `unit.minInRoster`.
+  `RosterDetailPage` показывает чекбоксы для каждого апгрейда с roster-wide счётчиком (X/max).
 
 ---
 
