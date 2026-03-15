@@ -1,102 +1,137 @@
-# Задание для wh40kAPI: поддержка зависимости записей от выбранного детачмента
+# Задание для wh40kAPI: поддержка зависимости юнитов от выбранного детачмента
 
-## Контекст
+## Статус (обновлено по результатам анализа данных)
 
-Фронтенд TooOldRecruit получает данные о юнитах из эндпоинта `/fractions/{id}/unitsTree` и список детачментов из `/fractions/{id}/detachments`. Детачмент хранится в ростере как строка-имя (`detachmentName`).
-
-В BSData некоторые дочерние записи юнитов (апгрейды — оружие, особые предметы) по умолчанию скрыты (`hidden: true`) и становятся доступны только при выборе конкретного детачмента. Эта зависимость закодирована в `modifierGroups` записи:
-
-```json
-{
-  "modifiers": [
-    { "field": "hidden", "type": "set", "value": "false" },
-    { "field": "<constraint-id>", "type": "set", "value": "1" }
-  ],
-  "conditions": [
-    { "field": "selections", "scope": "roster", "type": "atLeast", "value": "1", "childId": "<detachment-entry-id>" }
-  ]
-}
-```
-
-**Конкретный пример (Adeptus Mechanicus):** апгрейды Callidus Assassin → «Decoy Targets», Culexus → «Esoteric Explosives», Eversor → «Intra-neural Biotech», Vindicare → «Micromelta Round» — доступны только при детачменте «Veiled Blade Elimination Force» (`id: e203-73dc-18d9-f390`).
+- ✅ **Фронтенд TooOldRecruit готов** — логика фильтрации реализована и ждёт данных от API.
+- ✅ **`/fractions/{id}/detachments` уже возвращает `{id, name}[]`** — фронтенд обновлён и поддерживает новый формат.
+- ❌ **`/fractions/{id}/unitsTree` не передаёт зависимости** — юниты, доступные только при конкретном детачменте, возвращаются как `hidden: false` без условий. Это нужно исправить.
 
 ---
 
-## Проблема
+## Конкретный пример: Chaos Knights — «Cultist Firebrand»
 
-Фронтенд не может применить эту логику, потому что:
+По правилам игры, юнит **«Cultist Firebrand»** доступен только при детачменте **«Iconoclast Fiefdom»**.
 
-1. **`/fractions/{id}/detachments` возвращает `string[]`** — только имена детачментов, без их ID.  
-   Фронтенд не может сопоставить имя детачмента (которое хранит ростер) с `childId` в условиях `modifierGroups`.
+### Что API возвращает сейчас (неверно)
 
-2. **Поле `hidden` не передаётся в `/fractions/{id}/unitsTree`** (либо фронтенд не получает его для дочерних записей).  
-   Без этого поля фронтенд не знает, какие дочерние записи скрыты по умолчанию и требуют условия детачмента.
-
----
-
-## Что нужно изменить в wh40kAPI
-
-### 1. Эндпоинт `/fractions/{id}/detachments`
-
-**Текущий ответ:**
-```json
-["Alien Hunters (Ordo Xenos)", "Daemon Hunters (Ordo Malleus)", "Veiled Blade Elimination Force", ...]
-```
-
-**Требуемый ответ:**
-```json
-[
-  { "id": "aabf-4988-4054-bed2", "name": "Alien Hunters (Ordo Xenos)" },
-  { "id": "bd6f-97c7-6ac4-8320", "name": "Daemon Hunters (Ordo Malleus)" },
-  { "id": "e203-73dc-18d9-f390", "name": "Veiled Blade Elimination Force" }
-]
-```
-
-Поле `id` — это BSData-идентификатор записи детачмента (`selectionEntry.id`), который используется в `modifierGroups.conditions[].childId`.
-
-### 2. Эндпоинт `/fractions/{id}/unitsTree`
-
-Для каждого узла дерева (включая дочерние записи типа `upgrade`, `model`, `selectionEntryGroup`) необходимо включать поле **`hidden`** (`boolean`):
+Из `/fractions/Chaos - Chaos Knights/unitsTree`:
 
 ```json
 {
-  "id": "eb7b-611d-308e-6436",
-  "name": "Decoy Targets",
-  "entryType": "upgrade",
-  "hidden": true,
+  "id": "cb66-af7-2cca-1c85",
+  "name": "Cultist Firebrand",
+  "entryType": "model",
+  "hidden": false,
   "modifierGroups": [
     {
-      "modifiers": "[{\"field\":\"hidden\",\"type\":\"set\",\"value\":\"false\"},{\"field\":\"8a04-ccf3-9c4f-4e4e\",\"type\":\"set\",\"value\":\"1\"}]",
-      "conditions": "[{\"field\":\"selections\",\"scope\":\"roster\",\"type\":\"atLeast\",\"value\":\"1\",\"childId\":\"e203-73dc-18d9-f390\"}]"
+      "modifiers": "[{\"field\":\"...\",\"type\":\"increment\",\"value\":\"2\"}, ...]",
+      "conditions": null
     }
   ]
 }
 ```
 
-Поле `hidden: true` должно присутствовать у записей, скрытых по умолчанию (до применения условных модификаторов).
+Проблема: `hidden: false` — юнит отображается для **всех** детачментов, хотя должен быть доступен только при «Iconoclast Fiefdom».
+
+### Что API должен возвращать (требуемое)
+
+```json
+{
+  "id": "cb66-af7-2cca-1c85",
+  "name": "Cultist Firebrand",
+  "entryType": "model",
+  "hidden": true,
+  "modifierGroups": [
+    {
+      "modifiers": "[{\"field\":\"hidden\",\"type\":\"set\",\"value\":\"false\"}]",
+      "conditions": "[{\"field\":\"selections\",\"scope\":\"roster\",\"type\":\"atLeast\",\"value\":\"1\",\"childId\":\"7fe8-de91-8976-e705\"}]"
+    }
+  ]
+}
+```
+
+Где:
+- `hidden: true` — юнит скрыт по умолчанию (до применения условного модификатора)
+- `modifierGroups[0].modifiers` — модификатор, снимающий скрытие: `field=hidden, type=set, value=false`
+- `modifierGroups[0].conditions` — условие: `scope=roster, childId=7fe8-de91-8976-e705` (ID детачмента «Iconoclast Fiefdom»)
+
+### ID детачментов Chaos Knights (из текущего API)
+
+| Детачмент | BSData ID |
+|-----------|-----------|
+| Houndpack Lance | `6cb5-45cf-c626-fa86` |
+| **Iconoclast Fiefdom** | `7fe8-de91-8976-e705` |
+| Infernal Lance | `812b-f056-ec50-2c3c` |
+| Lords of Dread | `e5ab-9622-8b2a-84d0` |
+| Traitoris Lance | `603e-6bcd-927f-cb70` |
 
 ---
 
-## Как это будет использоваться фронтендом
+## Суть проблемы в wh40kAPI
 
-После этих изменений фронтенд сможет:
+В BSData (исходные данные Battlescribe) «Cultist Firebrand» закодирован с `hidden="true"` и модификатором, который снимает скрытие при выборе «Iconoclast Fiefdom». Однако **текущий wh40kAPI применяет этот модификатор безусловно** (без учёта выбранного детачмента) и возвращает `hidden: false` для всех пользователей.
 
-1. Загрузить список детачментов с их ID: `getDetachments(factionId)` → `{id, name}[]`
-2. По имени выбранного детачмента в ростере найти его ID
-3. При построении дерева юнитов в `buildChildTree` — для каждой дочерней записи с `hidden: true` проверить, есть ли в её `modifierGroups` условие `{scope: 'roster', childId: <detachment-id>}` с модификатором `{field: 'hidden', type: 'set', value: 'false'}`
-4. Если условие выполнено — включить запись в дерево (как доступный апгрейд/модель); иначе — пропустить
+Аналогичная проблема существует для:
+- апгрейдов (оружие, особые предметы), доступных только при определённом детачменте — в `buildChildTree` фронтенда
+- целых отрядов — в `collectUnits` фронтенда (например, «Cultist Firebrand»)
+- контейнеров `selectionEntryGroup`, группирующих детачмент-эксклюзивный контент
 
 ---
 
-## Обратная совместимость
+## Что нужно изменить в wh40kAPI
 
-Изменение формата `/fractions/{id}/detachments` с `string[]` на `{id, name}[]` — ломающее изменение. Возможные варианты:
+### Эндпоинт `/fractions/{id}/unitsTree`
 
-- **Вариант A (предпочтительный):** Заменить формат ответа. Фронтенд TooOldRecruit будет обновлён одновременно.
-- **Вариант B:** Добавить новый эндпоинт, например `/fractions/{id}/detachmentsWithIds`, оставив старый без изменений.
+**Для КАЖДОГО узла дерева** (unit, model, upgrade, selectionEntryGroup) необходимо:
+
+1. **Возвращать RAW значение поля `hidden`** из BSData **до применения условных модификаторов**.  
+   Если в BSData запись имеет `hidden="true"` + модификатор `{type="set", field="hidden", value="false"}` с условием детачмента — API должен возвращать `"hidden": true`, а не применять модификатор автоматически.
+
+2. **Включать в `modifierGroups` все группы модификаторов**, у которых есть условия `{scope: "roster"}`.  
+   Это позволит фронтенду определить, при каком детачменте запись становится доступной.
+
+**Ожидаемая структура modifierGroup для детачмент-зависимой записи:**
+
+```json
+{
+  "modifiers": "[{\"field\":\"hidden\",\"type\":\"set\",\"value\":\"false\"}]",
+  "conditions": "[{\"field\":\"selections\",\"scope\":\"roster\",\"type\":\"atLeast\",\"value\":\"1\",\"childId\":\"<detachment-bsdata-id>\"}]"
+}
+```
+
+---
+
+## Как фронтенд будет использовать эти данные
+
+Фронтенд TooOldRecruit уже реализовал следующую логику (готова к использованию):
+
+1. Загружает детачменты: `GET /fractions/{id}/detachments` → `{id, name}[]`
+2. По имени детачмента из ростера находит его BSData ID
+3. При обходе `unitsTree` для каждой записи с `hidden: true` проверяет наличие в `modifierGroups` условия:
+   ```
+   modifier.field === "hidden" && modifier.value === "false"
+   condition.scope === "roster" && condition.childId === <detachment-id>
+   ```
+4. Если совпадение найдено — запись включается в список; иначе — скрывается
+
+Это работает для:
+- корневых юнитов/моделей (пример: «Cultist Firebrand» — виден только при «Iconoclast Fiefdom»)
+- дочерних апгрейдов внутри юнитов (пример: оружие ассасинов из Adeptus Mechanicus)
+- контейнеров `selectionEntryGroup` с детачмент-эксклюзивным контентом
+
+---
+
+## Что уже работает (не нужно менять)
+
+- ✅ `/fractions/{id}/detachments` возвращает `[{"id": "...", "name": "..."}]` — формат поддерживается
+- ✅ Поле `hidden` уже присутствует в ответе `unitsTree` для всех записей
+- ✅ Поле `modifierGroups` уже присутствует в ответе `unitsTree`
+- ✅ Поля `modifiers` и `conditions` внутри `modifierGroups` уже возвращаются как JSON-строки
+
+**Единственное изменение:** API должен возвращать `hidden: true` (raw BSData значение) вместо `hidden: false` (после безусловного применения модификатора) для записей, скрытие которых снимается только при условии выбора определённого детачмента.
 
 ---
 
 ## Приоритет
 
-Средний. Без этого изменения детачмент-эксклюзивные апгрейды (специальное оружие ассасинов и аналогичные записи в других фракциях) не отображаются и недоступны в приложении при сборке ростера.
+Высокий. Без этого изменения детачмент-эксклюзивные юниты (такие как «Cultist Firebrand» в Chaos Knights) видны и доступны для выбора **во всех детачментах**, что противоречит правилам игры.
