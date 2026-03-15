@@ -261,6 +261,81 @@ const CONTAINER_EXCLUSIVE_GROUPS: Record<string, string[][]> = {
   '347a-c7c2-1bc8-db33': [['efff-ac31-c7a5-93c6', 'fec1-2c41-7ea4-480e']],
 };
 
+// Карта BSData GUID категорий → отображаемое имя.
+// Используется при разрешении модификаторов типа set-primary category, которые ссылаются
+// на BSData ID записи категории (categoryEntry), а не на текстовое имя.
+const CATEGORY_GUID_NAMES: Record<string, string> = {
+  'e338-111e-d0c6-b687': 'Battleline',
+};
+
+// Возвращает результирующие category и maxInRoster для узла с учётом активного детачмента.
+// Обрабатывает modifierGroups с условием scope="force" childId=detachmentId (выбор детачмента).
+// Поддерживаемые модификаторы:
+//   • type="set-primary" field="category" — смена категории (value — BSData GUID из CATEGORY_GUID_NAMES);
+//   • type="set" field=<GUID> value=<число> — замена maxInRoster (field — ID ограничения BSData).
+function applyDetachmentModifiers(
+  item: ApiUnitItem,
+  detachmentId: string | undefined,
+  currentCategory: string,
+  currentMaxInRoster: number | undefined,
+): { category: string; maxInRoster: number | undefined } {
+  if (!detachmentId || !item.modifierGroups?.length) {
+    return { category: currentCategory, maxInRoster: currentMaxInRoster };
+  }
+
+  let category = currentCategory;
+  let maxInRoster = currentMaxInRoster;
+
+  for (const group of item.modifierGroups) {
+    // Проверяем условия: нужна группа с условием scope="force" childId=detachmentId
+    let conditionMatches = false;
+    try {
+      if (group.conditions && typeof group.conditions === 'string') {
+        const conds = JSON.parse(group.conditions) as Array<{
+          scope?: string;
+          type?: string;
+          childId?: string;
+        }>;
+        conditionMatches = conds.some(
+          c => c.scope === 'force' && c.childId === detachmentId,
+        );
+      }
+    } catch {
+      continue;
+    }
+    if (!conditionMatches) continue;
+
+    // Применяем модификаторы
+    try {
+      if (group.modifiers && typeof group.modifiers === 'string') {
+        const mods = JSON.parse(group.modifiers) as Array<{
+          field?: string;
+          type?: string;
+          value?: string;
+        }>;
+        for (const mod of mods) {
+          if (mod.type === 'set-primary' && mod.field === 'category' && mod.value) {
+            const resolved = CATEGORY_GUID_NAMES[mod.value];
+            if (resolved) category = resolved;
+          } else if (mod.type === 'set' && mod.field && mod.value) {
+            // BSData constraint GUIDs имеют формат xxxxxxxx-xxxx-xxxx-xxxx (с дефисами).
+            // Обычные текстовые поля (hidden, name, annotation) дефисов не содержат.
+            const isBsdataConstraintGuid = /^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$/.test(mod.field);
+            if (isBsdataConstraintGuid) {
+              const parsed = Number(mod.value);
+              if (isFinite(parsed)) maxInRoster = parsed;
+            }
+          }
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return { category, maxInRoster };
+}
+
 // Динамически определяет XOR-группы из modifierGroups, которые возвращает API.
 // Паттерн BSData: modifier type="set" field="hidden" value="true" +
 //   condition type="atLeast" childId=<id сиблинга в том же контейнере>.
@@ -440,10 +515,6 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
 
     const mapItem = (item: ApiUnitItem, depth = 0): Unit => {
       const cats = item.categories ?? item.unitCategories;
-      const category =
-        cats?.find(c => c.primary)?.name ??
-        cats?.[0]?.name ??
-        item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
       let cost: number | undefined;
       if (item.cost !== undefined) cost = toNum(item.cost);
       else if (item.points !== undefined) cost = toNum(item.points);
@@ -456,7 +527,16 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
       } else if (item.costs !== undefined) cost = toNum(item.costs);
       const isLeader = item.infoLinks?.some(l => l.type === 'rule' && l.name === 'Leader') ?? false;
       // null означает «без ограничений» (не 0!), поэтому используем != null вместо !== undefined
-      const maxInRoster = item.maxInRoster != null ? toNum(item.maxInRoster) : undefined;
+      let maxInRoster = item.maxInRoster != null ? toNum(item.maxInRoster) : undefined;
+
+      // Применяем модификаторы детачмента (смена категории, изменение лимита отрядов).
+      // Вызывается только для корневых записей (depth=0), т.к. modifierGroups хранятся на юните.
+      let category = cats?.find(c => c.primary)?.name ??
+        cats?.[0]?.name ??
+        item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
+      if (depth === 0) {
+        ({ category, maxInRoster } = applyDetachmentModifiers(item, detachmentId, category, maxInRoster));
+      }
 
       // Парсим встроенные диапазоны стоимости (из unitsTree)
       const rawTiers = item.costTiers ?? item.tiers;
