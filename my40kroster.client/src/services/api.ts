@@ -225,6 +225,17 @@ interface ApiUnitItem {
   // До реализации этого динамического подхода XOR обеспечивается через
   // статическую таблицу CONTAINER_EXCLUSIVE_GROUPS ниже.
   modifierGroups?: Array<{ id?: number; unitId?: string; modifiers?: string | null; conditions?: string | null }>;
+  // Upgrade-дочерние записи с ограничениями minInRoster > 0 и детачмент-условием.
+  // Добавлено в ответ /fractions/{id}/unitsTree после обновления wh40kAPI (коммит e28e595).
+  // Заполняется для записей типа "model", у которых есть upgrade-дети, скрытые без определённого детачмента.
+  // Пример: War Dog → [{name:"Houndpack Lance Character", minInRoster:3, maxInRoster:3, requiredDetachmentId:"6cb5..."}]
+  requiredUpgrades?: Array<{
+    id?: string;
+    name?: string;
+    minInRoster?: number | null;
+    maxInRoster?: number | null;
+    requiredDetachmentId?: string | null;
+  }>;
 }
 
 const DEFAULT_FACTIONS: Faction[] = [
@@ -330,25 +341,29 @@ const CATEGORY_GUID_NAMES: Record<string, string> = {
   'e338-111e-d0c6-b687': 'Battleline',
 };
 
-// Возвращает результирующие category и maxInRoster для узла с учётом активного детачмента.
+// Возвращает результирующие category, maxInRoster и minInRoster для узла с учётом активного детачмента.
 // Обрабатывает modifierGroups с условием scope="force"|"roster" childId=detachmentId.
 // wh40kAPI экспортирует как <modifierGroup>, так и top-level <modifier> элементы selectionEntry
 // в виде modifierGroups (начиная с коммита Shooshpanius/wh40kAPI@1d56b37).
 // Поддерживаемые модификаторы:
 //   • type="set-primary" field="category" — смена категории (value — BSData GUID из CATEGORY_GUID_NAMES);
-//   • type="set" field=<GUID> value=<число> — замена maxInRoster (field — ID ограничения BSData).
+//   • type="set" field=<GUID> value=<число> — замена maxInRoster (field — ID ограничения BSData);
+//   • type="set-min" field=<GUID> value=<число> — замена minInRoster (когда wh40kAPI начнёт различать
+//     min/max ограничения по типу; пока API возвращает только type="set" для обоих типов).
 function applyDetachmentModifiers(
   item: ApiUnitItem,
   detachmentId: string | undefined,
   currentCategory: string,
   currentMaxInRoster: number | undefined,
-): { category: string; maxInRoster: number | undefined } {
+  currentMinInRoster: number | undefined,
+): { category: string; maxInRoster: number | undefined; minInRoster: number | undefined } {
   if (!detachmentId) {
-    return { category: currentCategory, maxInRoster: currentMaxInRoster };
+    return { category: currentCategory, maxInRoster: currentMaxInRoster, minInRoster: currentMinInRoster };
   }
 
   let category = currentCategory;
   let maxInRoster = currentMaxInRoster;
+  let minInRoster = currentMinInRoster;
 
   // Динамический путь через modifierGroups: применяем группы с условием scope="force"|"roster" childId=detachmentId.
   if (item.modifierGroups?.length) {
@@ -385,13 +400,26 @@ function applyDetachmentModifiers(
             if (mod.type === 'set-primary' && mod.field === 'category' && mod.value) {
               const resolved = CATEGORY_GUID_NAMES[mod.value];
               if (resolved) category = resolved;
-            } else if (mod.type === 'set' && mod.field && mod.value) {
+            } else if ((mod.type === 'set' || mod.type === 'set-max') && mod.field && mod.value) {
               // BSData constraint GUIDs имеют формат xxxxxxxx-xxxx-xxxx-xxxx (с дефисами).
               // Обычные текстовые поля (hidden, name, annotation) дефисов не содержат.
+              // type="set" — текущий формат wh40kAPI (не различает min/max ограничения);
+              // type="set-max" — перспективный формат после доработки wh40kAPI (явный max-constraint).
+              // Оба типа трактуются как maxInRoster: исторически type="set" с GUID-полем
+              // использовался только для max-ограничений (min-ограничения ещё не экспортировались).
               const isBsdataConstraintGuid = /^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$/.test(mod.field);
               if (isBsdataConstraintGuid) {
                 const parsed = Number(mod.value);
                 if (isFinite(parsed)) maxInRoster = parsed;
+              }
+            } else if (mod.type === 'set-min' && mod.field && mod.value) {
+              // Явный тип "set-min" — изменение минимального ограничения.
+              // Ожидается после того, как wh40kAPI начнёт различать min/max constraint type.
+              // Сейчас (до доработки wh40kAPI) этот путь никогда не срабатывает.
+              const isBsdataConstraintGuid = /^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$/.test(mod.field);
+              if (isBsdataConstraintGuid) {
+                const parsed = Number(mod.value);
+                if (isFinite(parsed)) minInRoster = parsed;
               }
             }
           }
@@ -402,7 +430,51 @@ function applyDetachmentModifiers(
     }
   }
 
-  return { category, maxInRoster };
+  return { category, maxInRoster, minInRoster };
+}
+
+// Возвращает true, если узел должен быть скрыт при текущем детачменте.
+// Применяется к записям, которые по умолчанию видимы (hidden: false), но содержат
+// модификатор hidden=true с условием "данного детачмента нет в ростере" (type=lessThan, value=1).
+// Паттерн BSData: modifier[type=set, field=hidden, value=true] + condition[type=lessThan, scope=roster, childId=<detachmentId>].
+// Смысл: запись скрывается, если указанный детачмент НЕ выбран.
+// Пример: "Houndpack Lance Character" скрывается без Houndpack Lance (6cb5-45cf-c626-fa86).
+function isHiddenByDetachment(item: ApiUnitItem, detachmentId: string | undefined): boolean {
+  if (!item.modifierGroups?.length) return false;
+  for (const group of item.modifierGroups) {
+    let hasHideModifier = false;
+    try {
+      if (group.modifiers && typeof group.modifiers === 'string') {
+        const mods = JSON.parse(group.modifiers) as Array<{ field?: string; type?: string; value?: string }>;
+        hasHideModifier = mods.some(m => m.type === 'set' && m.field === 'hidden' && m.value === 'true');
+      }
+    } catch { continue; } // некорректный JSON в поле modifiers — пропускаем группу
+    if (!hasHideModifier) continue;
+
+    try {
+      if (group.conditions && typeof group.conditions === 'string') {
+        const conds = JSON.parse(group.conditions) as Array<{
+          scope?: string;
+          type?: string;
+          childId?: string;
+          field?: string;
+        }>;
+        for (const c of conds) {
+          // Условие: "записей с childId в ростере меньше 1" → скрыть, если детачмент не выбран
+          if (
+            c.type === 'lessThan' &&
+            c.scope === 'roster' &&
+            c.field === 'selections' &&
+            c.childId
+          ) {
+            // Если текущий детачмент НЕ совпадает с условием → запись должна быть скрыта
+            if (detachmentId !== c.childId) return true;
+          }
+        }
+      }
+    } catch { continue; } // некорректный JSON в поле conditions — пропускаем группу
+  }
+  return false;
 }
 
 // Динамически определяет XOR-группы из modifierGroups, которые возвращает API.
@@ -626,14 +698,34 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
       const isLeader = item.infoLinks?.some(l => l.type === 'rule' && l.name === 'Leader') ?? false;
       // null означает «без ограничений» (не 0!), поэтому используем != null вместо !== undefined
       let maxInRoster = item.maxInRoster != null ? toNum(item.maxInRoster) : undefined;
+      // minInRoster из API: минимальное количество данного типа в ростере (может быть задано детачментом)
+      let minInRoster = item.minInRoster != null ? toNum(item.minInRoster) : undefined;
 
-      // Применяем модификаторы детачмента (смена категории, изменение лимита отрядов).
+      // Применяем модификаторы детачмента (смена категории, изменение лимитов отрядов).
       // Вызывается только для корневых записей (depth=0), т.к. modifierGroups хранятся на юните.
       let category = cats?.find(c => c.primary)?.name ??
         cats?.[0]?.name ??
         item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
       if (depth === 0) {
-        ({ category, maxInRoster } = applyDetachmentModifiers(item, detachmentId, category, maxInRoster));
+        ({ category, maxInRoster, minInRoster } = applyDetachmentModifiers(item, detachmentId, category, maxInRoster, minInRoster));
+
+        // Дополнительный источник minInRoster — поле requiredUpgrades из wh40kAPI (коммит e28e595).
+        // Для записей типа "model" (например War Dog), у которых upgrade-дочерние записи имеют
+        // roster-wide min-ограничение при определённом детачменте, wh40kAPI возвращает
+        // requiredUpgrades вместо обычных modifierGroups, т.к. children у "model" не обрабатывает buildChildTree.
+        // minInRoster здесь — это фактически «минимальное количество отрядов данного типа в ростере»
+        // (следствие: если нужно 3 из них с Houndpack Lance Character, то нужно минимум 3 таких отряда).
+        if (detachmentId && item.requiredUpgrades?.length) {
+          const matchingUpgrade = item.requiredUpgrades.find(
+            u => u.requiredDetachmentId === detachmentId
+          );
+          if (matchingUpgrade?.minInRoster != null) {
+            const reqMin = Number(matchingUpgrade.minInRoster);
+            if (isFinite(reqMin) && reqMin > 0) {
+              minInRoster = Math.max(minInRoster ?? 0, reqMin);
+            }
+          }
+        }
       }
 
       // Парсим встроенные диапазоны стоимости (из unitsTree)
@@ -749,6 +841,10 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
           // Пропускаем записи, скрытые по умолчанию, если они не разблокированы текущим детачментом.
           // Поле hidden появилось в /unitsTree после обновления wh40kAPI.
           if (child.hidden === true && !isUnlockedByDetachment(child, detachmentId)) continue;
+          // Пропускаем видимые по умолчанию записи, которые должны быть скрыты при текущем детачменте.
+          // Паттерн: запись hidden=false + modifier[hidden=true, condition lessThan 1 of detachment].
+          // Пример: "Houndpack Lance Character" скрыт без Houndpack Lance.
+          if (child.hidden !== true && isHiddenByDetachment(child, detachmentId)) continue;
 
           if (child.entryType === 'model') {
             const modelUnit = mapItem(child, depth + 1);
@@ -807,7 +903,7 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
               });
             }
           }
-          // Остальные типы (upgrade без скрытия, прочие) — пропускаем
+          // Остальные типы (upgrade без скрытия и без детачмент-условий, прочие) — пропускаем
         }
         return result;
       }
@@ -822,6 +918,7 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
         cost,
         isLeader,
         maxInRoster,
+        minInRoster,
         costBands: hasVariableCost ? costBands : undefined,
         modelCount: hasVariableCost && costBands ? costBands[0].minModels : undefined,
         hasVariableCost,
