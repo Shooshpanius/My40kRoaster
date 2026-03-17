@@ -129,6 +129,36 @@ namespace My40kRoster.Server.Controllers
             };
         }
 
+        // Прокси к эндпоинту wh40kAPI GET /fractions/{id}/ownCatalogues.
+        // Возвращает список «собственных» catalogueId фракции: сам каталог фракции плюс
+        // все каталоги, достижимые через catalogueLinks с importRootEntries="true" (рекурсивно).
+        // Юниты из этих каталогов являются основной частью фракции, а не «Allied Units».
+        //
+        // Зависимость (BSData): атрибут importRootEntries="true" в <catalogueLink> означает,
+        // что все корневые записи целевого каталога импортируются напрямую в данную фракцию.
+        // Пример: Chaos Knights (46d8-abc8-ef3a-9f85) → CK Library (8106-aad2-918a-9ac)
+        //         с importRootEntries="true", поэтому Cerastus и War Dog — НЕ Allied.
+        //         CSM (c8da-e875-58f7-f6d6) связан БЕЗ importRootEntries → Allied.
+        //
+        // Реализовано в wh40kAPI: Shooshpanius/wh40kAPI@2ea5612
+        // При сетевой ошибке или ответе не-2xx возвращает пустой массив [];
+        // клиент в этом случае использует статический FACTION_OWN_CATALOGUE_IDS как резервный источник.
+        [HttpGet("fractions/{id}/own-catalogues")]
+        public async Task<IActionResult> GetFractionOwnCatalogues(string id)
+        {
+            var client = httpClientFactory.CreateClient("wh40kapi");
+            using var response = await client.GetAsync($"fractions/{Uri.EscapeDataString(id)}/ownCatalogues").ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return new ContentResult { Content = "[]", ContentType = "application/json; charset=utf-8", StatusCode = 200 };
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return new ContentResult
+            {
+                Content = content,
+                ContentType = "application/json; charset=utf-8",
+                StatusCode = 200
+            };
+        }
+
         [HttpGet("units/{id}/categories")]
         public async Task<IActionResult> GetUnitCategories(string id)
         {
