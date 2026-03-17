@@ -330,21 +330,30 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
 
   const filteredUnits = attachMode ? units.filter(u => u.isLeader) : units;
 
-  const visibleUnits = allowLegends
+  const baseUnits = allowLegends
     ? filteredUnits
     : filteredUnits.filter(u =>
         factionId !== UNALIGNED_FORCES_ID &&
-        !u.isAllied &&
         !u.name.toLowerCase().includes('[legends]')
       );
 
-  const grouped = visibleUnits.reduce<Record<string, Unit[]>>((acc, unit) => {
+  const mainUnits = baseUnits.filter(u => !u.isAllied);
+  const alliedUnits = baseUnits.filter(u => u.isAllied);
+
+  const grouped = mainUnits.reduce<Record<string, Unit[]>>((acc, unit) => {
+    if (!acc[unit.category]) acc[unit.category] = [];
+    acc[unit.category].push(unit);
+    return acc;
+  }, {});
+
+  const groupedAllied = alliedUnits.reduce<Record<string, Unit[]>>((acc, unit) => {
     if (!acc[unit.category]) acc[unit.category] = [];
     acc[unit.category].push(unit);
     return acc;
   }, {});
 
   const types = Object.keys(grouped);
+  const alliedTypes = Object.keys(groupedAllied);
 
   const toggleType = (type: string) => {
     setOpenType(prev => (prev === type ? null : type));
@@ -359,7 +368,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const searchResults = normalizedQuery
-    ? visibleUnits.filter(u => u.name.toLowerCase().includes(normalizedQuery))
+    ? [...mainUnits, ...alliedUnits].filter(u => u.name.toLowerCase().includes(normalizedQuery))
     : [];
 
   const renderUnitItem = (unit: Unit, depth = 0): React.ReactNode => {
@@ -1016,28 +1025,59 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
                 {searchResults.map(u => renderUnitItem(u))}
               </ul>
             )
-          ) : types.length === 0 ? (
+          ) : types.length === 0 && alliedTypes.length === 0 ? (
             <div className="empty-state"><p>Отряды не найдены</p></div>
           ) : (
-            <div className="accordion">
-              {types.map(type => (
-                <div key={type} className="accordion-item">
-                  <button
-                    className={`accordion-header ${openType === type ? 'open' : ''}`}
-                    onClick={() => toggleType(type)}
-                  >
-                    <span>{type}</span>
-                    <span className="accordion-count">{grouped[type].length}</span>
-                    <span className="accordion-chevron">{openType === type ? '▲' : '▼'}</span>
-                  </button>
-                  {openType === type && (
-                    <ul className="accordion-body">
-                      {grouped[type].map(u => renderUnitItem(u))}
-                    </ul>
-                  )}
+            <>
+              {types.length > 0 && (
+                <div className="accordion">
+                  {types.map(type => (
+                    <div key={type} className="accordion-item">
+                      <button
+                        className={`accordion-header ${openType === type ? 'open' : ''}`}
+                        onClick={() => toggleType(type)}
+                      >
+                        <span>{type}</span>
+                        <span className="accordion-count">{grouped[type].length}</span>
+                        <span className="accordion-chevron">{openType === type ? '▲' : '▼'}</span>
+                      </button>
+                      {openType === type && (
+                        <ul className="accordion-body">
+                          {grouped[type].map(u => renderUnitItem(u))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+              {alliedTypes.length > 0 && (
+                <>
+                  <div className="allied-units-section-header">Allied Units</div>
+                  <div className="accordion">
+                    {alliedTypes.map(type => {
+                      const alliedKey = `allied:${type}`;
+                      return (
+                        <div key={alliedKey} className="accordion-item">
+                          <button
+                            className={`accordion-header ${openType === alliedKey ? 'open' : ''}`}
+                            onClick={() => toggleType(alliedKey)}
+                          >
+                            <span>{type}</span>
+                            <span className="accordion-count">{groupedAllied[type].length}</span>
+                            <span className="accordion-chevron">{openType === alliedKey ? '▲' : '▼'}</span>
+                          </button>
+                          {openType === alliedKey && (
+                            <ul className="accordion-body">
+                              {groupedAllied[type].map(u => renderUnitItem(u))}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </>
           )}
         </div>
       </div>

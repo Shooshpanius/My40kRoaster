@@ -535,11 +535,22 @@ export function RosterDetailPage() {
               </div>
             ) : (
               <div className="unit-groups">
-                {unitGroups.map((group) => {
+                {(() => {
+                  const nonAllied = unitGroups.filter(g => !g.units[0]?.isAllied);
+                  const allied = unitGroups.filter(g => g.units[0]?.isAllied);
+                  return [...nonAllied, ...allied];
+                })()
+                  .map((group, groupIndex, arr) => {
                   if (group.units.length === 0) return null;
                   const primaryUnit = group.units[0];
+                  const showAlliedHeader = !!primaryUnit.isAllied &&
+                    !arr[groupIndex - 1]?.units[0]?.isAllied;
                   return (
-                  <div key={group.id} className="unit-group">
+                  <React.Fragment key={group.id}>
+                    {showAlliedHeader && (
+                      <div className="allied-units-divider">Allied Units</div>
+                    )}
+                  <div className="unit-group">
                     <div className="unit-group-header">
                       <div className="unit-group-info">
                         <span className="unit-group-primary-name">
@@ -1291,6 +1302,7 @@ export function RosterDetailPage() {
                     </div>
                   )}
                   </div>
+                  </React.Fragment>
                   );
                 })}
               </div>
