@@ -129,6 +129,42 @@ namespace My40kRoster.Server.Controllers
             };
         }
 
+        // Прокси к эндпоинту wh40kAPI, возвращающему список «собственных» каталогов фракции.
+        // «Собственные» каталоги — каталог фракции и все каталоги, связанные через
+        // importRootEntries="true" в BSData (рекурсивно).
+        // Юниты из этих каталогов являются основной частью фракции, а не «Allied Units».
+        //
+        // Зависимость (BSData): атрибут importRootEntries="true" в <catalogueLink> означает,
+        // что все корневые записи целевого каталога импортируются напрямую в данную фракцию.
+        // Пример: Chaos Knights (46d8-abc8-ef3a-9f85) → CK Library (8106-aad2-918a-9ac)
+        //         с importRootEntries="true", поэтому Cerastus и War Dog — НЕ Allied.
+        //         CSM (c8da-e875-58f7-f6d6) связан БЕЗ importRootEntries → Allied.
+        //
+        // Задача для wh40kAPI (Shooshpanius/wh40kAPI):
+        //   Реализовать GET /fractions/{id}/ownCatalogues → string[]
+        //   Возвращать: {id} + все каталоги, достижимые через importRootEntries=true (рекурсивно).
+        //   Аналогично существующему CollectCatalogueIdsAsync(id, importRootEntriesOnly: true).
+        //
+        // До реализации этого эндпоинта в wh40kAPI возвращает пустой массив [];
+        // клиент в этом случае использует статический FACTION_OWN_CATALOGUE_IDS как резервный источник.
+        [HttpGet("fractions/{id}/own-catalogues")]
+        public async Task<IActionResult> GetFractionOwnCatalogues(string id)
+        {
+            var client = httpClientFactory.CreateClient("wh40kapi");
+            using var response = await client.GetAsync($"fractions/{Uri.EscapeDataString(id)}/ownCatalogues").ConfigureAwait(false);
+            // Если wh40kAPI ещё не реализовал эндпоинт — возвращаем пустой массив.
+            // Клиент при получении [] автоматически использует FACTION_OWN_CATALOGUE_IDS.
+            if (!response.IsSuccessStatusCode)
+                return new ContentResult { Content = "[]", ContentType = "application/json; charset=utf-8", StatusCode = 200 };
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return new ContentResult
+            {
+                Content = content,
+                ContentType = "application/json; charset=utf-8",
+                StatusCode = 200
+            };
+        }
+
         [HttpGet("units/{id}/categories")]
         public async Task<IActionResult> GetUnitCategories(string id)
         {

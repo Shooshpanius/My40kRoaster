@@ -334,6 +334,57 @@ const DETACHMENT_EXCLUSIVE_UNITS: Record<string, string[]> = {
   'c0f9-d16c-6caf-5b95': ['7fe8-de91-8976-e705'], // Rogue Psyker [Legends]
 };
 
+// Статическая карта «собственных» каталогов для «библиотечных» фракций — тех, у которых
+// основной .cat-файл не содержит юнитов напрямую, а использует связанные библиотечные
+// каталоги через importRootEntries="true".
+//
+// Ключ   — BSData GUID основного каталога фракции (id из /fractions).
+// Значение — массив BSData GUID каталогов, связанных через importRootEntries="true".
+//
+// Юниты из «собственных» каталогов НЕ являются «союзными» (Allied) — они основная часть
+// фракции. «Союзными» считаются только юниты из каталогов, связанных БЕЗ importRootEntries
+// (через явные entryLinks с условиями детачмента, например Chaos Space Marines в CK).
+//
+// Источник: <catalogueLinks> в *.cat-файлах репозитория github.com/BSData/wh40k-10e
+// Используется как резервный источник, когда wh40kAPI ещё не реализовал
+// эндпоинт GET /fractions/{id}/ownCatalogues.
+const FACTION_OWN_CATALOGUE_IDS: Record<string, string[]> = {
+  // ── Chaos - Chaos Knights (46d8-abc8-ef3a-9f85) ──────────────────────────
+  // catalogueLinks с importRootEntries="true":
+  '46d8-abc8-ef3a-9f85': [
+    '8106-aad2-918a-9ac', // Chaos - Chaos Knights Library
+    'b45c-af22-788a-dfd6', // Chaos - Daemons Library
+    '7481-280e-b55e-7867', // Library - Titans
+  ],
+  // ── Imperium - Imperial Knights (25dd-7aa0-6bf4-f2d5) ────────────────────
+  // catalogueLinks с importRootEntries="true":
+  '25dd-7aa0-6bf4-f2d5': [
+    '1b6d-dc06-5db9-c7d1', // Imperium - Imperial Knights - Library
+    'b00-cd86-4b4c-97ba', // Imperium - Agents of the Imperium
+    '7481-280e-b55e-7867', // Library - Titans
+  ],
+};
+
+// Загружает список «собственных» каталогов фракции через прокси-эндпоинт.
+// «Собственные» каталоги — это каталог фракции плюс все каталоги, связанные через
+// importRootEntries="true" в BSData (рекурсивно).
+// Когда wh40kAPI реализует эндпоинт /ownCatalogues, возвращает Set с этими ID.
+// Пока эндпоинт не реализован (ответ не 2xx или пустой массив) — возвращает null,
+// и вызывающий код применяет FACTION_OWN_CATALOGUE_IDS как резервный источник.
+async function fetchOwnCatalogueIds(factionId: string): Promise<Set<string> | null> {
+  try {
+    const res = await fetch(`${WH40K_API}/fractions/${encodeURIComponent(factionId)}/own-catalogues`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return new Set(data as string[]);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Карта BSData GUID категорий → отображаемое имя.
 // Используется при разрешении модификаторов типа set-primary category, которые ссылаются
 // на BSData ID записи категории (categoryEntry), а не на текстовое имя.
@@ -622,17 +673,22 @@ function isContainerItem(item: ApiUnitItem): boolean {
 
 export async function getUnits(factionId: string, detachmentId?: string): Promise<Unit[]> {
   try {
-    // Загружаем дерево юнитов и условия детачментов параллельно.
+    // Загружаем дерево юнитов, условия детачментов и собственные каталоги параллельно.
     // Условия детачментов: wh40kAPI разбирает entryLink-модификаторы из BSData .cat-файлов
     // и возвращает карту unitId → detachmentIds[] для юнитов, скрытых по умолчанию.
     // Пока wh40kAPI не реализовал этот эндпоинт, возвращается [] и используется
     // статический DETACHMENT_EXCLUSIVE_UNITS как резервный источник данных.
-    const [data, serverConditions] = await Promise.all([
+    //
+    // Собственные каталоги: wh40kAPI возвращает список catalogueId, связанных через
+    // importRootEntries="true" — юниты из них являются основной частью фракции, а не Allied.
+    // Пока этот эндпоинт не реализован — используется FACTION_OWN_CATALOGUE_IDS.
+    const [data, serverConditions, serverOwnCatalogues] = await Promise.all([
       fetch(`${WH40K_API}/fractions/${encodeURIComponent(factionId)}/unitsTree`).then(r => {
         if (!r.ok) throw new Error('Failed to fetch units');
         return r.json();
       }),
       getUnitDetachmentConditions(factionId),
+      fetchOwnCatalogueIds(factionId),
     ]);
 
     // Строим итоговую карту условий: сначала данные от wh40kAPI, затем дополняем статическим fallback.
@@ -644,6 +700,21 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
     for (const [unitId, detIds] of Object.entries(DETACHMENT_EXCLUSIVE_UNITS)) {
       if (!detachmentMap[unitId]) detachmentMap[unitId] = detIds;
     }
+
+    // Строим множество «собственных» catalogueId для фракции.
+    // «Собственные» каталоги — это сам каталог фракции плюс все каталоги, связанные через
+    // importRootEntries="true" в BSData (рекурсивно). Юниты из них НЕ являются Allied.
+    // «Союзными» считаются юниты из каталогов, связанных без importRootEntries (via entryLinks
+    // с условиями детачмента), например Chaos Space Marines в составе Chaos Knights.
+    //
+    // Источник: wh40kAPI /own-catalogues (основной) → FACTION_OWN_CATALOGUE_IDS (fallback).
+    const ownCatalogueIds: Set<string> = (() => {
+      if (serverOwnCatalogues) return serverOwnCatalogues;
+      const result = new Set<string>([factionId]);
+      const staticOwn = FACTION_OWN_CATALOGUE_IDS[factionId];
+      if (staticOwn) staticOwn.forEach(id => result.add(id));
+      return result;
+    })();
 
     // Собираем отряды уровня «корень фракции»: узлы типа "unit" или "model".
     // Работает с двумя форматами ответа API:
@@ -658,16 +729,17 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
     //   • Узел upgrade и прочие → пропускаем.
     //
     // insideAllied=true означает, что мы находимся внутри раздела связанного каталога
-    // (узла с catalogueId, не совпадающим с id текущей фракции).
+    // (catalogueId отсутствует в множестве собственных каталогов фракции).
     function collectUnits(nodes: ApiUnitItem[], insideAllied = false): ApiUnitItem[] {
       const result: ApiUnitItem[] = [];
       for (const node of nodes) {
         // Определяем: является ли текущий узел или его контекст разделом «союзных» юнитов.
         // Критерии:
         //   1. Уже находимся внутри Allied-раздела (флаг от родителя)
-        //   2. catalogueId узла определён и не совпадает с id текущей фракции
+        //   2. catalogueId узла определён и не входит в множество собственных каталогов фракции
+        //      (ownCatalogueIds = {factionId} ∪ {каталоги с importRootEntries="true"})
         const isAlliedSection = insideAllied
-          || (node.catalogueId != null && node.catalogueId !== factionId);
+          || (node.catalogueId != null && !ownCatalogueIds.has(node.catalogueId));
 
         if (node.entryType === 'unit' || node.entryType === 'model') {
           // Пропускаем отряды/модели, скрытые по умолчанию и не разблокированные текущим детачментом.
