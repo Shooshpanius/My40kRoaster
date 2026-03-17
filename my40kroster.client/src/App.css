@@ -843,6 +843,26 @@ body {
   gap: 0.75rem;
 }
 
+/* Разделитель «Allied Units» в ростере */
+.allied-units-divider {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-secondary, #888);
+  padding: 0.5rem 0 0.25rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.5rem;
+}
+
+/* Заголовок секции «Allied Units» в модальном окне добавления */
+.allied-units-section-header {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary, #888);
+  padding: 0.75rem 0 0.25rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+}
+
 /* Секция контейнера для Case 4 (Inquisitorial Agents и аналогичные) */
 .unit-container-section {
   border-top: 1px solid var(--border);
