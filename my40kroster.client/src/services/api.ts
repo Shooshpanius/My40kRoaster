@@ -111,45 +111,11 @@ export interface Detachment {
   name: string;
 }
 
-// Статическое переопределение детачментов для фракций, у которых wh40kAPI возвращает
-// неверные данные из-за особенности формата BSData: категория «Configuration» прописана
-// на <entryLink> (catalogue-level), а не на самом <selectionEntry>, поэтому wh40kAPI
-// не находит корень детачментов фракции и откатывается к данным связанных каталогов.
-//
-// Пример: Imperium - Adeptus Mechanicus (77b9-2f66-3f9b-5cf3).
-// В AM.cat файле (github.com/BSData/wh40k-10e) запись «Detachment» (c82f-1b42-946-9c9a)
-// не имеет категории «Configuration» напрямую — она задана через entryLink:
-//   <entryLink targetId="c82f-1b42-946-9c9a">
-//     <categoryLinks><categoryLink name="Configuration"/></categoryLinks>
-//   </entryLink>
-// wh40kAPI ищет «Configuration» на самой записи, не находит и возвращает детачменты
-// «Agents of the Imperium» вместо собственных AM.
-//
-// Ключ   — BSData GUID основного каталога фракции.
-// Значение — правильный список детачментов фракции.
-// Источник: Imperium - Adeptus Mechanicus.cat (github.com/BSData/wh40k-10e),
-//           дочерние записи selectionEntryGroup «Detachments» (6972-dcc-e567-d509).
-const FACTION_DETACHMENTS_OVERRIDE: Record<string, Detachment[]> = {
-  // ── Imperium - Adeptus Mechanicus (77b9-2f66-3f9b-5cf3) ──────────────────
-  '77b9-2f66-3f9b-5cf3': [
-    { id: 'f67d-6f59-21b8-e1f9', name: 'Cohort Cybernetica' },
-    { id: 'e282-2b49-bd6a-679c', name: 'Data-psalm Conclave' },
-    { id: 'e01f-8783-4769-2eb6', name: 'Explorator Maniple' },
-    { id: 'ce65-6b89-4a0e-4f3b', name: 'Haloscreed Battleclade' },
-    { id: '7aa5-4c0c-40c3-e2a',  name: 'Rad-zone Corps' },
-    { id: '48bd-eeae-171d-a10a', name: 'Skitarii Hunter Cohort' },
-  ],
-};
-
 // Загружает список детачментов для выбранной фракции через прокси-эндпоинт.
 // API возвращает {id, name}[] (после обновления wh40kAPI).
 // Поддерживается устаревший формат string[] (id будет пустой строкой).
 // Возвращает пустой массив если фракция не поддерживает детачменты или API недоступен.
-// При наличии записи в FACTION_DETACHMENTS_OVERRIDE возвращает статические данные
-// без обращения к API (обходит баг wh40kAPI с entryLink-categoryLinks для AM и аналогичных).
 export async function getDetachments(factionId: string): Promise<Detachment[]> {
-  const override = FACTION_DETACHMENTS_OVERRIDE[factionId];
-  if (override) return override;
   try {
     const res = await fetch(`${WH40K_API}/fractions/${encodeURIComponent(factionId)}/detachments`);
     if (!res.ok) return [];
