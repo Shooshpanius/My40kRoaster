@@ -365,6 +365,29 @@ const FACTION_OWN_CATALOGUE_IDS: Record<string, string[]> = {
   ],
 };
 
+// Каталоги, которые для данной фракции всегда считаются Allied (союзными),
+// даже если wh40kAPI возвращает их в составе «собственных» каталогов через
+// importRootEntries="true". Используется для фракций, у которых связанные
+// библиотеки являются именно союзными контингентами, а не ядром фракции.
+//
+// Ключ   — BSData GUID основного каталога фракции.
+// Значение — массив catalogueId, принудительно исключаемых из ownCatalogueIds.
+const FACTION_ALLIED_CATALOGUE_IDS: Record<string, string[]> = {
+  // ── Imperium - Adeptus Mechanicus (77b9-2f66-3f9b-5cf3) ──────────────────
+  // BSData содержит importRootEntries="true" для этих ссылок, однако
+  // юниты из данных каталогов являются союзными для AM, а не частью фракции:
+  //   • IK Library — Cerastus Knights (Acheron/Atrapos/Castigator/Lancer)
+  //     являются Questor Mechanicus, т.е. рыцарями, присягнувшими AM, но
+  //     остающимися Allied, а не core-отрядами AM.
+  //   • Agents of the Imperium и Titans — аналогично Allied контингенты.
+  // Источник: Imperium - Adeptus Mechanicus.cat (github.com/BSData/wh40k-10e)
+  '77b9-2f66-3f9b-5cf3': [
+    '1b6d-dc06-5db9-c7d1', // Imperium - Imperial Knights - Library (Cerastus Knights)
+    'b00-cd86-4b4c-97ba',  // Imperium - Agents of the Imperium
+    '7481-280e-b55e-7867', // Library - Titans
+  ],
+};
+
 // Загружает список «собственных» каталогов фракции через прокси-эндпоинт
 // GET /api/bsdata/fractions/{id}/own-catalogues → wh40kAPI GET /fractions/{id}/ownCatalogues.
 // «Собственные» каталоги — это каталог фракции плюс все каталоги, связанные через
@@ -705,15 +728,23 @@ export async function getUnits(factionId: string, detachmentId?: string): Promis
     // «Собственные» каталоги — это сам каталог фракции плюс все каталоги, связанные через
     // importRootEntries="true" в BSData (рекурсивно). Юниты из них НЕ являются Allied.
     // «Союзными» считаются юниты из каталогов, связанных без importRootEntries (via entryLinks
-    // с условиями детачмента), например Chaos Space Marines в составе Chaos Knights.
+    // с условиями детачмента), например Chaos Space Marines в составе Chaos Knights,
+    // а также каталоги из FACTION_ALLIED_CATALOGUE_IDS — принудительно Allied вне зависимости
+    // от importRootEntries (например, Cerastus Knights для Adeptus Mechanicus).
     //
     // Источник: wh40kAPI /own-catalogues (основной) → FACTION_OWN_CATALOGUE_IDS (fallback).
+    // После построения применяется FACTION_ALLIED_CATALOGUE_IDS: каталоги из него удаляются
+    // из множества «собственных», даже если API вернул их таковыми.
     const ownCatalogueIds: Set<string> = (() => {
-      if (serverOwnCatalogues) return serverOwnCatalogues;
-      const result = new Set<string>([factionId]);
-      const staticOwn = FACTION_OWN_CATALOGUE_IDS[factionId];
-      if (staticOwn) staticOwn.forEach(id => result.add(id));
-      return result;
+      const base = serverOwnCatalogues ?? (() => {
+        const result = new Set<string>([factionId]);
+        const staticOwn = FACTION_OWN_CATALOGUE_IDS[factionId];
+        if (staticOwn) staticOwn.forEach(id => result.add(id));
+        return result;
+      })();
+      const alwaysAllied = FACTION_ALLIED_CATALOGUE_IDS[factionId];
+      if (alwaysAllied) alwaysAllied.forEach(id => base.delete(id));
+      return base;
     })();
 
     // Собираем отряды уровня «корень фракции»: узлы типа "unit" или "model".
