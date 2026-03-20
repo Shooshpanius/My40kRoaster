@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getFactions, getUnits } from '../services/api';
+import { getFactions, getUnits, getUnitDetail } from '../services/api';
+import type { UnitDetail } from '../services/api';
 import type { Faction, Unit, UnitProfile } from '../types';
 
 const CATEGORY_ORDER = [
@@ -28,13 +29,13 @@ export function CatalogPage() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
 
-  // Полные данные по отрядам (с характеристиками), загружаемые в фоне после
-  // быстрого отображения списка через облегчённый эндпоинт.
-  // Карта: unitId → полный объект Unit с profiles/weapons.
-  const [fullUnitsMap, setFullUnitsMap] = useState<Map<string, Unit> | null>(null);
-  const [fullUnitsLoading, setFullUnitsLoading] = useState(false);
-
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
+
+  // Кэш детальных данных юнитов: unitId → UnitDetail (profiles/weapons/abilities/keywords).
+  // Данные загружаются по запросу при выборе отряда через GET /units/{id}/full-node.
+  // При смене фракции кэш сбрасывается.
+  const unitDetailCache = useRef<Map<string, UnitDetail | 'loading' | 'error'>>(new Map());
+  const [detailCacheVersion, setDetailCacheVersion] = useState(0);
 
   // Load factions on mount
   useEffect(() => {
@@ -45,46 +46,49 @@ export function CatalogPage() {
       .finally(() => setFactionsLoading(false));
   }, []);
 
-  // Load units when faction changes.
-  // Этап 1 (быстрый): загружаем облегчённый список через /units-list (без характеристик)
-  //   → пользователь видит список отрядов немедленно.
-  // Этап 2 (фоновой): параллельно загружаем полные данные через /unitsTree (с характеристиками)
-  //   → когда загрузка завершится, детальная карточка обновится автоматически.
+  // Load lightweight unit list when faction changes.
+  // Характеристики (profiles/weapons) загружаются по запросу при выборе конкретного отряда.
   useEffect(() => {
     if (!selectedFaction) {
       setUnits([]);
-      setFullUnitsMap(null);
       setSelectedUnit(null);
+      unitDetailCache.current = new Map();
       return;
     }
-    // Флаг отмены для защиты от гонки состояний: если фракция сменилась раньше,
-    // чем завершился предыдущий запрос, устаревший ответ не обновит состояние.
     let cancelled = false;
 
     setUnitsLoading(true);
-    setFullUnitsMap(null);
-    setFullUnitsLoading(true);
     setSelectedUnit(null);
+    unitDetailCache.current = new Map();
 
-    // Этап 1: облегчённый список (без profiles)
     getUnits(selectedFaction.id, undefined, { lightweight: true })
       .then(list => { if (!cancelled) setUnits(list); })
       .catch(() => { if (!cancelled) setUnits([]); })
       .finally(() => { if (!cancelled) setUnitsLoading(false); });
 
-    // Этап 2: полные данные в фоне (с profiles/weapons)
-    getUnits(selectedFaction.id)
-      .then(fullUnits => {
-        if (!cancelled) {
-          const map = new Map(fullUnits.map(u => [u.id, u]));
-          setFullUnitsMap(map);
-        }
-      })
-      .catch(() => { if (!cancelled) setFullUnitsMap(null); })
-      .finally(() => { if (!cancelled) setFullUnitsLoading(false); });
-
     return () => { cancelled = true; };
   }, [selectedFaction]);
+
+  // Load full unit detail when a unit is selected (on-demand, cached per session).
+  useEffect(() => {
+    if (!selectedUnit) return;
+    const cached = unitDetailCache.current.get(selectedUnit.id);
+    if (cached) return; // already loaded, loading, or errored
+
+    unitDetailCache.current.set(selectedUnit.id, 'loading');
+    setDetailCacheVersion(v => v + 1);
+
+    const unitId = selectedUnit.id;
+    getUnitDetail(unitId)
+      .then(detail => {
+        unitDetailCache.current.set(unitId, detail ?? 'error');
+        setDetailCacheVersion(v => v + 1);
+      })
+      .catch(() => {
+        unitDetailCache.current.set(unitId, 'error');
+        setDetailCacheVersion(v => v + 1);
+      });
+  }, [selectedUnit]);
 
   const filteredFactions = useMemo(() => {
     if (!factionSearch.trim()) return factions;
@@ -114,6 +118,16 @@ export function CatalogPage() {
       return ia - ib;
     });
   }, [unitsByCategory]);
+
+  // Получаем данные детального просмотра для выбранного юнита из кэша.
+  // detailCacheVersion изменяется когда кэш обновляется, провоцируя пересчёт компонента.
+  const selectedUnitDetailEntry = detailCacheVersion >= 0 && selectedUnit
+    ? unitDetailCache.current.get(selectedUnit.id)
+    : undefined;
+  const loadingDetail = selectedUnitDetailEntry === 'loading';
+  const unitDetail = typeof selectedUnitDetailEntry === 'object' && selectedUnitDetailEntry !== null
+    ? (selectedUnitDetailEntry as UnitDetail)
+    : undefined;
 
   return (
     <div className="catalog-page">
@@ -202,11 +216,12 @@ export function CatalogPage() {
               <span>← Выберите отряд</span>
             </div>
           ) : (
-            // Если полные данные уже загружены — показываем полный юнит (с характеристиками).
-            // Иначе показываем облегчённый юнит + индикатор загрузки характеристик.
+            // Показываем карточку юнита: базовые данные из облегчённого списка +
+            // характеристики/оружие/способности из fullNode (загружаются по запросу).
             <UnitDetailCard
-              unit={fullUnitsMap?.get(selectedUnit.id) ?? selectedUnit}
-              loadingDetail={fullUnitsLoading && !fullUnitsMap?.has(selectedUnit.id)}
+              unit={selectedUnit}
+              detail={unitDetail}
+              loadingDetail={loadingDetail}
             />
           )}
         </div>
@@ -269,7 +284,23 @@ function ProfileTable({ profiles, statOrder }: { profiles: UnitProfile[]; statOr
 
 // ─── Unit Detail Card ────────────────────────────────────────────────────────
 
-function UnitDetailCard({ unit, loadingDetail }: { unit: Unit; loadingDetail?: boolean }) {
+function UnitDetailCard({
+  unit,
+  detail,
+  loadingDetail,
+}: {
+  unit: Unit;
+  detail?: UnitDetail;
+  loadingDetail?: boolean;
+}) {
+  // Профили/оружие/ключевые слова/способности берутся из detail (fullNode),
+  // если загружены; в противном случае — из unit (может содержать данные, если
+  // unit был загружен полным — например, при AddUnitModal в ростере).
+  const profiles = detail?.profiles ?? unit.profiles;
+  const weapons = detail?.weapons ?? unit.weapons;
+  const keywords = detail?.keywords ?? unit.keywords;
+  const abilities = detail?.abilities ?? unit.abilities;
+
   return (
     <div className="unit-detail-card">
       {/* Name & Badges */}
@@ -287,10 +318,10 @@ function UnitDetailCard({ unit, loadingDetail }: { unit: Unit; loadingDetail?: b
       </div>
 
       {/* Unit stats (M/T/Sv/W/Ld/OC) */}
-      {unit.profiles && unit.profiles.length > 0 ? (
+      {profiles && profiles.length > 0 ? (
         <div className="unit-detail-section">
           <div className="unit-detail-section-title">Характеристики</div>
-          <ProfileTable profiles={unit.profiles} statOrder={UNIT_STAT_ORDER} />
+          <ProfileTable profiles={profiles} statOrder={UNIT_STAT_ORDER} />
         </div>
       ) : loadingDetail ? (
         <div className="unit-detail-section">
@@ -329,10 +360,10 @@ function UnitDetailCard({ unit, loadingDetail }: { unit: Unit; loadingDetail?: b
       </div>
 
       {/* Weapons */}
-      {unit.weapons && unit.weapons.length > 0 ? (
+      {weapons && weapons.length > 0 ? (
         <div className="unit-detail-section">
           <div className="unit-detail-section-title">Оружие</div>
-          {unit.weapons.map(w => {
+          {weapons.map(w => {
             // Определяем набор колонок по первому профилю оружия.
             // В BSData у каждого оружия ровно один профиль (либо Ranged, либо Melee),
             // поэтому смешанных профилей в одном блоке не бывает.
@@ -363,11 +394,11 @@ function UnitDetailCard({ unit, loadingDetail }: { unit: Unit; loadingDetail?: b
       ) : null}
 
       {/* Abilities */}
-      {unit.abilities && unit.abilities.length > 0 && (
+      {abilities && abilities.length > 0 && (
         <div className="unit-detail-section">
           <div className="unit-detail-section-title">Способности</div>
           <div className="unit-detail-abilities">
-            {unit.abilities.map(a => (
+            {abilities.map(a => (
               <span key={a} className="unit-ability-tag">{a}</span>
             ))}
           </div>
@@ -415,11 +446,11 @@ function UnitDetailCard({ unit, loadingDetail }: { unit: Unit; loadingDetail?: b
       )}
 
       {/* Keywords */}
-      {unit.keywords && unit.keywords.length > 0 && (
+      {keywords && keywords.length > 0 && (
         <div className="unit-detail-section">
           <div className="unit-detail-section-title">Ключевые слова</div>
           <div className="unit-detail-keywords">
-            {unit.keywords.map(kw => (
+            {keywords.map(kw => (
               <span key={kw} className="unit-keyword-tag">{kw}</span>
             ))}
           </div>

@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using System.Text.Json.Nodes;
 
 namespace My40kRoster.Server.Controllers
 {
@@ -160,53 +159,43 @@ namespace My40kRoster.Server.Controllers
             };
         }
 
-        // Прокси к эндпоинту wh40kAPI GET /fractions/{id}/unitsTree, но с удалёнными полями profiles.
-        // Возвращает облегчённое дерево юнитов — только структурные данные (id, name, entryType,
-        // categories, costs, modifierGroups, infoLinks, children и т.д.) без характеристик юнитов
-        // и без характеристик оружия. Используется в каталоге для быстрого отображения списка
-        // отрядов: клиент получает список сразу, а полные характеристики загружает отдельно
-        // (фоновая загрузка через /fractions/{id}/unitsTree).
-        //
-        // Пока wh40kAPI не реализовал нативный лёгкий эндпоинт /fractions/{id}/unitsList,
-        // TooOldRecruit удаляет поле profiles на стороне сервера, сокращая размер ответа.
-        // Задача для wh40kAPI: docs/wh40kAPI-issue-split-catalog-api.md
+        // Прокси к нативному эндпоинту wh40kAPI GET /fractions/{id}/unitsList.
+        // Возвращает облегчённое дерево юнитов без характеристик (profiles не загружаются из БД).
+        // Используется для быстрого отображения списка отрядов в каталоге;
+        // полные характеристики загружаются по запросу через /units/{id}/full-node.
+        // Реализовано в wh40kAPI: Shooshpanius/wh40kAPI@59348c7
         [HttpGet("fractions/{id}/units-list")]
         public async Task<IActionResult> GetFractionUnitsList(string id)
         {
             var client = httpClientFactory.CreateClient("wh40kapi");
-            using var response = await client.GetAsync($"fractions/{Uri.EscapeDataString(id)}/unitsTree").ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                var errContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                return new ContentResult { Content = errContent, ContentType = "application/json; charset=utf-8", StatusCode = (int)response.StatusCode };
-            }
-            var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            var nodes = JsonNode.Parse(json);
-            StripProfilesRecursive(nodes);
+            using var response = await client.GetAsync($"fractions/{Uri.EscapeDataString(id)}/unitsList").ConfigureAwait(false);
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             return new ContentResult
             {
-                Content = nodes?.ToJsonString() ?? "[]",
+                Content = content,
                 ContentType = "application/json; charset=utf-8",
-                StatusCode = 200,
+                StatusCode = (int)response.StatusCode,
             };
         }
 
-        // Рекурсивно удаляет поле "profiles" из JSON-узлов дерева юнитов.
-        private static void StripProfilesRecursive(JsonNode? node)
+        // Прокси к эндпоинту wh40kAPI GET /units/{id}/fullNode.
+        // Возвращает полный BsDataUnitNode для одного юнита: характеристики (profiles),
+        // дочерние upgrade-узлы (оружие) с их profiles и infoLinks.
+        // Используется для отображения полного датащита выбранного отряда в каталоге.
+        // Реализовано в wh40kAPI: Shooshpanius/wh40kAPI@59348c7
+        [HttpGet("units/{id}/full-node")]
+        public async Task<IActionResult> GetUnitFullNode(string id)
         {
-            if (node is JsonArray array)
+            var client = httpClientFactory.CreateClient("wh40kapi");
+            using var response = await client.GetAsync($"units/{Uri.EscapeDataString(id)}/fullNode").ConfigureAwait(false);
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return new ContentResult
             {
-                foreach (var item in array)
-                    StripProfilesRecursive(item);
-            }
-            else if (node is JsonObject obj)
-            {
-                obj.Remove("profiles");
-                if (obj["children"] is JsonNode children)
-                    StripProfilesRecursive(children);
-            }
+                Content = content,
+                ContentType = "application/json; charset=utf-8",
+                StatusCode = (int)response.StatusCode,
+            };
         }
-
 
         [HttpGet("units/{id}/categories")]
         public async Task<IActionResult> GetUnitCategories(string id)
