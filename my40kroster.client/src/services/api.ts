@@ -867,7 +867,7 @@ export async function getUnits(factionId: string, detachmentId?: string, options
       // Вызывается только для корневых записей (depth=0), т.к. modifierGroups хранятся на юните.
       let category = cats?.find(c => c.primary)?.name ??
         cats?.[0]?.name ??
-        item.category ?? item.categoryName ?? item.entryType ?? item.type ?? 'Other';
+        item.category ?? item.categoryName ?? item.type ?? 'Other';
       if (isTopLevel) {
         ({ category, maxInRoster, minInRoster } = applyDetachmentModifiers(item, detachmentId, category, maxInRoster, minInRoster));
 
