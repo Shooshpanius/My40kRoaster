@@ -320,7 +320,7 @@ export function AddUnitModal({ factionId, factionName, onClose, onAdd, attachMod
   const [modelCounts, setModelCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    getUnits(factionId, detachmentId).then(data => {
+    getUnits(factionId, detachmentId, { lightweight: true }).then(data => {
       setUnits(data);
       setLoading(false);
     }).catch(() => {
