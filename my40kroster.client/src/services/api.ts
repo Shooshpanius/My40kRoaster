@@ -322,6 +322,8 @@ const CONTAINER_EXCLUSIVE_GROUPS: Record<string, string[][]> = {
 // доступны только в детачменте «Iconoclast Fiefdom» (7fe8-de91-8976-e705).
 // Источник: Chaos - Chaos Knights.cat (github.com/BSData/wh40k-10e)
 const DETACHMENT_EXCLUSIVE_UNITS: Record<string, string[]> = {
+  // ── Chaos - Death Guard → Tallyband Summoners only ───────────────────────
+  '904b-0319-7b2e-2145': ['69e5-13c7-06bf-d454'], // Plaguebearers (Summoned, catalogueId 5108-f98-63c2-53cb)
   // ── Chaos Knights → Iconoclast Fiefdom only ──────────────────────────────
   '1780-25b8-ce0b-898d': ['7fe8-de91-8976-e705'], // Dark Commune
   'f69d-2171-5f95-9c88': ['7fe8-de91-8976-e705'], // Traitor Enforcer
@@ -807,6 +809,11 @@ export async function getUnits(factionId: string, detachmentId?: string, options
           // Пример: Cultist Firebrand (cb66-af7-2cca-1c85) → только Iconoclast Fiefdom (7fe8-…).
           const allowedDetachments = detachmentMap[node.id ?? ''];
           if (allowedDetachments && (!detachmentId || !allowedDetachments.includes(detachmentId))) continue;
+          // Пропускаем юниты, видимые по умолчанию (hidden=false), но содержащие modifierGroup
+          // с условием «скрыть, если данного детачмента нет в ростере» (паттерн scope=force|roster,
+          // type=lessThan, childId=detachmentId). Используется когда /unitsTree возвращает modifierGroups.
+          // Пример: Plaguebearers (Death Guard, 904b-0319-7b2e-2145) → только Tallyband Summoners.
+          if (node.hidden !== true && isHiddenByDetachment(node, detachmentId)) continue;
           // Пропускаем дочерние модели-артефакты плоского /unitsList (например, «Blue Horror»
           // внутри «Blue Horrors»): у них есть категории, но ни одна не помечена primary.
           // Самостоятельные узлы верхнего уровня всегда имеют хотя бы одну primary-категорию.
