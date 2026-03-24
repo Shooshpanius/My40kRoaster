@@ -316,8 +316,9 @@ const CONTAINER_EXCLUSIVE_GROUPS: Record<string, string[][]> = {
 // (через явные entryLinks с условиями детачмента, например Chaos Space Marines в CK).
 //
 // Источник: <catalogueLinks> в *.cat-файлах репозитория github.com/BSData/wh40k-10e
-// Используется как резервный источник на случай недоступности эндпоинта
-// GET /fractions/{id}/ownCatalogues (Shooshpanius/wh40kAPI@2ea5612).
+// Используется как сетевой фолбэк при недоступности
+// GET /fractions/{id}/ownCatalogues (Shooshpanius/wh40kAPI@76ceb4c, @2ea5612),
+// который уже корректно возвращает все рекурсивно достижимые каталоги через BFS.
 const FACTION_OWN_CATALOGUE_IDS: Record<string, string[]> = {
   // ── Chaos - Chaos Knights (46d8-abc8-ef3a-9f85) ──────────────────────────
   // catalogueLinks с importRootEntries="true":
@@ -325,6 +326,17 @@ const FACTION_OWN_CATALOGUE_IDS: Record<string, string[]> = {
     '8106-aad2-918a-9ac', // Chaos - Chaos Knights Library
     'b45c-af22-788a-dfd6', // Chaos - Daemons Library
     '7481-280e-b55e-7867', // Library - Titans
+  ],
+  // ── Chaos - Death Guard (5108-f98-63c2-53cb) ─────────────────────────────
+  // catalogueLinks с importRootEntries="true":
+  //   • Chaos - Daemons Library — все хаосовские демоны (включая Нурглитских),
+  //     доступные Death Guard как собственные отряды (не Allied).
+  //   • Chaos Space Marines Legends — Heretic Astartes Legends-юниты
+  //     (Decimator, Deredeo Dreadnought, Typhon и др.): собственные Legends-отряды DG.
+  // Источник: Chaos - Death Guard.cat (github.com/BSData/wh40k-10e)
+  '5108-f98-63c2-53cb': [
+    'b45c-af22-788a-dfd6', // Chaos - Daemons Library
+    'ac3b-689c-4ad4-70cb', // Chaos Space Marines Legends
   ],
   // ── Imperium - Imperial Knights (25dd-7aa0-6bf4-f2d5) ────────────────────
   // catalogueLinks с importRootEntries="true":
@@ -361,9 +373,9 @@ const FACTION_ALLIED_CATALOGUE_IDS: Record<string, string[]> = {
 // Загружает список «собственных» каталогов фракции через прокси-эндпоинт
 // GET /api/bsdata/fractions/{id}/own-catalogues → wh40kAPI GET /fractions/{id}/ownCatalogues.
 // «Собственные» каталоги — это каталог фракции плюс все каталоги, связанные через
-// importRootEntries="true" в BSData (рекурсивно). Реализовано в Shooshpanius/wh40kAPI@2ea5612.
+// importRootEntries="true" в BSData (рекурсивно, BFS). Реализовано в wh40kAPI@76ceb4c, @2ea5612.
 // При ошибке сети или ответе не-2xx возвращает null, и вызывающий код
-// использует FACTION_OWN_CATALOGUE_IDS как резервный источник.
+// использует FACTION_OWN_CATALOGUE_IDS как сетевой фолбэк.
 async function fetchOwnCatalogueIds(factionId: string): Promise<Set<string> | null> {
   try {
     const res = await fetch(`${WH40K_API}/fractions/${encodeURIComponent(factionId)}/own-catalogues`);
