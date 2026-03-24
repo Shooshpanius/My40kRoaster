@@ -294,6 +294,25 @@ const FORCE_HIDDEN_UNIT_IDS = new Set<string>([
   'a5c2-3951-e727-b64a', // Breaching Robot
   '61f3-ff33-ec7a-3546', // Searchlight
   '983d-b163-dc9f-3c54', // Sentry Gun
+  // Укрепления (Fortification) из каталога Unaligned Forces (581a-46b9-5b86-44b7) —
+  // Legends-укрепления, не допустимые в стандартном матч-плей списке в разделе Allied Units.
+  // wh40kAPI возвращает их с hidden=false, поэтому скрываем явно.
+  '5b1d-134a-9996-b634', // Aegis Defence Line with Weapon Emplacement [Legends]
+  '5134-5fe9-e489-43c4', // Bastion [Legends]
+  '20c8-d2-586d-623',    // Castellum Stronghold [Legends]
+  '71b0-77b9-522c-17d6', // Firestorm Redoubt [Legends]
+  'c4d1-c85a-a20e-6c94', // Fortress of Redemption [Legends]
+  'f6f8-8759-3282-2ab',  // Imperial Fortress Walls [Legends]
+  '3b75-e314-ecd5-cd63', // Macro-cannon Aquila Strongpoint [Legends]
+  'cabe-2c66-c8b6-de6c', // Plasma Obliterator [Legends]
+  'f39-fc54-f95a-8395',  // Primaris Redoubt [Legends]
+  '54c-8b9f-b1d8-93c3',  // Skyshield Landing Pad [Legends]
+  '14fe-18ed-9c25-189c', // Vengeance Weapon Battery [Legends]
+  '4501-646d-e705-9dca', // Void Shield Generator [Legends]
+  '5c81-92c5-e20b-edf1', // Vortex Missile Strongpoint [Legends]
+  '9698-2e0-15ac-1193',  // Wall of Martyrs Bunker [Legends]
+  '8419-8133-33f3-e0a4', // Wall of Martyrs Defence Emplacement [Legends]
+  '64b7-a2df-416a-9963', // Wall of Martyrs Defence Line [Legends]
 ]);
 
 // Резервная карта взаимоисключающих групп по id контейнера.
