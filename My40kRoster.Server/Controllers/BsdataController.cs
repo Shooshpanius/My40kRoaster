@@ -184,6 +184,101 @@ namespace My40kRoster.Server.Controllers
             };
         }
 
+        // Прокси к эндпоинту wh40kAPI GET /fractions/{id}/units (плоский список).
+        // Возвращает slim-метаданные только для записей типа unit/model:
+        //   [{id, catalogueId, categories: [{name, primary}]}]
+        //
+        // Назначение: в ответе /unitsList (wh40kAPI@d82a681d) все узлы depth≥1 имеют catalogueId=""
+        // (пустая строка). Если Allied-каталог является вложенным контейнером (depth≥1) в дереве
+        // фракции, это нарушает определение Allied-юнитов: контейнер не детектируется как Allied,
+        // и флаг insideAllied не распространяется на его дочерние отряды.
+        // Плоский список всегда содержит корректный catalogueId для каждого юнита.
+        //
+        // Клиент использует эту карту в getUnits(lightweight=true) для обогащения узлов
+        // с пустым catalogueId и устранения ошибок классификации Allied Units.
+        // При ошибке upstream возвращает пустой массив []; клиент продолжает работу без обогащения.
+        [HttpGet("fractions/{id}/units-classification")]
+        public async Task<IActionResult> GetFractionUnitsClassification(string id)
+        {
+            var client = httpClientFactory.CreateClient("wh40kapi");
+            using var response = await client.GetAsync($"fractions/{Uri.EscapeDataString(id)}/units").ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return new ContentResult { Content = "[]", ContentType = "application/json; charset=utf-8", StatusCode = 200 };
+            var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            var slim = BuildUnitsClassificationResponse(content);
+            return new ContentResult
+            {
+                Content = slim,
+                ContentType = "application/json; charset=utf-8",
+                StatusCode = 200,
+            };
+        }
+
+        /// <summary>
+        /// Builds a slim classification response from a flat units list JSON.
+        /// Extracts only unit/model entries and returns [{id, catalogueId, categories:[{name,primary}]}].
+        /// Falls back to "[]" on parse errors.
+        /// </summary>
+        private static string BuildUnitsClassificationResponse(string json)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind != JsonValueKind.Array) return "[]";
+
+                using var ms = new System.IO.MemoryStream();
+                using (var writer = new Utf8JsonWriter(ms))
+                {
+                    writer.WriteStartArray();
+                    foreach (var element in doc.RootElement.EnumerateArray())
+                    {
+                        if (!element.TryGetProperty("entryType", out var entryType)) continue;
+                        var et = entryType.GetString();
+                        if (et != "unit" && et != "model") continue;
+
+                        if (!element.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String) continue;
+                        if (!element.TryGetProperty("catalogueId", out var catalogueId)) continue;
+
+                        writer.WriteStartObject();
+                        writer.WriteString("id", id.GetString());
+                        writer.WriteString("catalogueId", catalogueId.ValueKind == JsonValueKind.String ? catalogueId.GetString() : "");
+
+                        writer.WritePropertyName("categories");
+                        if (element.TryGetProperty("categories", out var categories) && categories.ValueKind == JsonValueKind.Array)
+                        {
+                            writer.WriteStartArray();
+                            foreach (var cat in categories.EnumerateArray())
+                            {
+                                if (cat.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String
+                                    && cat.TryGetProperty("primary", out var primary)
+                                    && (primary.ValueKind == JsonValueKind.True || primary.ValueKind == JsonValueKind.False))
+                                {
+                                    writer.WriteStartObject();
+                                    writer.WriteString("name", name.GetString());
+                                    writer.WriteBoolean("primary", primary.GetBoolean());
+                                    writer.WriteEndObject();
+                                }
+                            }
+                            writer.WriteEndArray();
+                        }
+                        else
+                        {
+                            writer.WriteStartArray();
+                            writer.WriteEndArray();
+                        }
+
+                        writer.WriteEndObject();
+                    }
+                    writer.WriteEndArray();
+                }
+                return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            }
+            catch (JsonException)
+            {
+                return "[]";
+            }
+        }
+
         /// <summary>
         /// Strips unnecessary fields from the wh40kAPI /unitsList response and returns minified JSON.
         /// Removes: categories/infoLinks from depth≥1 nodes; id/unitId from categories and costTiers objects.
