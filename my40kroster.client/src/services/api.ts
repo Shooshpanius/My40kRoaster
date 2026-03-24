@@ -400,6 +400,35 @@ async function fetchOwnCatalogueIds(factionId: string): Promise<Set<string> | nu
   }
 }
 
+// Slim-метаданные юнита для классификации Allied: catalogueId + categories из плоского списка.
+// Используется для обогащения узлов depth≥1 в /unitsList, где wh40kAPI возвращает catalogueId="".
+interface ApiUnitClassMeta {
+  id: string;
+  catalogueId: string;
+  categories: Array<{ name: string; primary: boolean }>;
+}
+
+// Загружает slim-метаданные юнитов из GET /api/bsdata/fractions/{id}/units-classification.
+// Возвращает Map<unitId, ApiUnitClassMeta> для быстрого поиска по id.
+// Вызывается при lightweight=true из getUnits() для исправления классификации Allied-юнитов.
+// При ошибке сети или пустом ответе возвращает null — getUnits() работает без обогащения,
+// что может привести к ошибкам Allied-отображения для фракций с вложенными Allied-контейнерами.
+async function fetchUnitsClassification(factionId: string): Promise<Map<string, ApiUnitClassMeta> | null> {
+  try {
+    const res = await fetch(`${WH40K_API}/fractions/${encodeURIComponent(factionId)}/units-classification`);
+    if (!res.ok) return null;
+    const data = await res.json() as ApiUnitClassMeta[];
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const map = new Map<string, ApiUnitClassMeta>();
+    for (const item of data) {
+      if (item.id) map.set(item.id, item);
+    }
+    return map;
+  } catch {
+    return null;
+  }
+}
+
 // Карта BSData GUID категорий → отображаемое имя.
 // Используется при разрешении модификаторов типа set-primary category, которые ссылаются
 // на BSData ID записи категории (categoryEntry), а не на текстовое имя.
@@ -709,16 +738,19 @@ export async function getUnits(factionId: string, detachmentId?: string, options
     //
     // Эндпоинт: lightweight=true → /units-list (без profiles, быстрее),
     //           lightweight=false/undefined → /unitsTree (полные данные).
+    // Карта классификации (только в lightweight-режиме): slim-метаданные из плоского /units
+    // для исправления пустых catalogueId на узлах depth≥1 в /unitsList.
     const unitsTreeEndpoint = options?.lightweight
       ? `${WH40K_API}/fractions/${encodeURIComponent(factionId)}/units-list`
       : `${WH40K_API}/fractions/${encodeURIComponent(factionId)}/unitsTree`;
-    const [data, serverConditions, serverOwnCatalogues] = await Promise.all([
+    const [data, serverConditions, serverOwnCatalogues, classificationMap] = await Promise.all([
       fetch(unitsTreeEndpoint).then(r => {
         if (!r.ok) throw new Error('Failed to fetch units');
         return r.json();
       }),
       getUnitDetachmentConditions(factionId),
       fetchOwnCatalogueIds(factionId),
+      options?.lightweight ? fetchUnitsClassification(factionId) : Promise.resolve(null),
     ]);
 
     // Строим карту условий детачментов: unitId → detachmentIds[].
@@ -776,8 +808,18 @@ export async function getUnits(factionId: string, detachmentId?: string, options
         //      (ownCatalogueIds = {factionId} ∪ {каталоги с importRootEntries="true"})
         //      Пустая строка ("") означает «неизвестно» (wh40kAPI@d82a681d обнуляет catalogueId
         //      у дочерних узлов depth≥1 в /unitsList) — не должна триггировать Allied-детекцию.
+        //
+        // Для depth≥1 узлов с catalogueId="" используется карта классификации (classificationMap):
+        // плоский /units всегда возвращает корректный catalogueId для каждого юнита.
+        // Это исправляет случай, когда Allied-каталог является вложенным контейнером depth≥1:
+        // там catalogueId тоже пустой, и флаг insideAllied не распространяется на дочерние юниты.
+        let resolvedCatalogueId = node.catalogueId ?? '';
+        if (classificationMap && node.id && (!node.catalogueId || node.catalogueId === '')) {
+          const meta = classificationMap.get(node.id);
+          if (meta?.catalogueId) resolvedCatalogueId = meta.catalogueId;
+        }
         const isAlliedSection = insideAllied
-          || (node.catalogueId != null && node.catalogueId !== '' && !ownCatalogueIds.has(node.catalogueId));
+          || (resolvedCatalogueId !== '' && !ownCatalogueIds.has(resolvedCatalogueId));
 
         if (node.entryType === 'unit' || node.entryType === 'model') {
           // Безусловно пропускаем юниты из списка FORCE_HIDDEN_UNIT_IDS (выведены из игры).
@@ -799,23 +841,50 @@ export async function getUnits(factionId: string, detachmentId?: string, options
           // внутри «Blue Horrors», «Blightlord Champion» внутри «Blightlord Terminators»):
           // у них либо пустой массив categories [], либо есть категории, но ни одна не помечена primary.
           // Самостоятельные узлы верхнего уровня всегда имеют хотя бы одну primary-категорию.
+          //
+          // Исключение: если узел идентифицирован как Allied (isAlliedSection=true), его categories
+          // могли быть удалены на depth≥1 в /unitsList. В таком случае это самостоятельный
+          // Allied-юнит (например, Knight Despoiler, War Dog), а не компонентная модель.
           if (
             node.entryType === 'model' &&
             Array.isArray(node.categories) &&
-            !node.categories.some(c => c.primary)
+            !node.categories.some(c => c.primary) &&
+            !isAlliedSection
           ) continue;
           // Для юнитов из каталога Unaligned Forces в союзном контексте допустимы только записи,
           // у которых primary-категория строго равна "Allied Units".
           // Укрепления (Fortification, Bastion и др.) в BSData используют иную primary-категорию
           // и предназначены для других форматов игры — они не должны попадать в раздел Allied Units.
           // Такой фильтр опирается на данные BSData, а не на перечень конкретных ID записей.
-          if (isAlliedSection && node.catalogueId === UNALIGNED_FORCES_ID) {
+          if (isAlliedSection && resolvedCatalogueId === UNALIGNED_FORCES_ID) {
             const hasPrimaryAllied = (node.categories ?? []).some(c => c.primary && c.name === 'Allied Units');
             if (!hasPrimaryAllied) continue;
           }
+          // Строим обогащённый узел: заменяем catalogueId и categories данными из classificationMap,
+          // если оригинальный catalogueId был пустым (depth≥1 в /unitsList).
+          // categories обогащаются только для Allied-юнитов, чтобы они отображались под правильной
+          // категорией (Character, Vehicle и т.д.), а не под «Other».
+          let enrichedNode = node;
+          if (classificationMap && node.id && (!node.catalogueId || node.catalogueId === '')) {
+            const meta = classificationMap.get(node.id);
+            if (meta) {
+              // Обогащаем categories только для Allied-юнитов с пустым массивом категорий:
+              // для собственных каталогов categories уже корректны, а для Allied важно знать
+              // правильное имя категории (Character, Vehicle и т.д.).
+              const shouldEnrichCategories =
+                isAlliedSection && (node.categories?.length ?? 0) === 0 && meta.categories.length > 0;
+              enrichedNode = {
+                ...node,
+                catalogueId: meta.catalogueId || node.catalogueId,
+                categories: shouldEnrichCategories
+                  ? meta.categories as ApiUnitItem['categories']
+                  : node.categories,
+              };
+            }
+          }
           // Отряд или модель — добавляем в результат.
           // В children находится состав отряда, а не отдельные юниты → не рекурсируем.
-          result.push(isAlliedSection ? { ...node, _isAllied: true } : node);
+          result.push(isAlliedSection ? { ...enrichedNode, _isAllied: true } : enrichedNode);
         } else if (isContainerItem(node)) {
           // Контейнерный узел (категория, раздел каталога, selectionEntryGroup) — рекурсируем.
           // Если контейнер скрыт и не разблокирован детачментом — пропускаем его вместе с содержимым.
