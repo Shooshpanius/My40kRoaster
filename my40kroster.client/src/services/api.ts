@@ -772,12 +772,12 @@ export async function getUnits(factionId: string, detachmentId?: string, options
           // Пример: Plaguebearers (Death Guard, 904b-0319-7b2e-2145) → только Tallyband Summoners.
           if (node.hidden !== true && isHiddenByDetachment(node, detachmentId)) continue;
           // Пропускаем дочерние модели-артефакты плоского /unitsList (например, «Blue Horror»
-          // внутри «Blue Horrors»): у них есть категории, но ни одна не помечена primary.
+          // внутри «Blue Horrors», «Blightlord Champion» внутри «Blightlord Terminators»):
+          // у них либо пустой массив categories [], либо есть категории, но ни одна не помечена primary.
           // Самостоятельные узлы верхнего уровня всегда имеют хотя бы одну primary-категорию.
           if (
             node.entryType === 'model' &&
             Array.isArray(node.categories) &&
-            node.categories.length > 0 &&
             !node.categories.some(c => c.primary)
           ) continue;
           // Отряд или модель — добавляем в результат.
