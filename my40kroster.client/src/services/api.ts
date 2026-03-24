@@ -804,6 +804,15 @@ export async function getUnits(factionId: string, detachmentId?: string, options
             Array.isArray(node.categories) &&
             !node.categories.some(c => c.primary)
           ) continue;
+          // Для юнитов из каталога Unaligned Forces в союзном контексте допустимы только записи,
+          // у которых primary-категория строго равна "Allied Units".
+          // Укрепления (Fortification, Bastion и др.) в BSData используют иную primary-категорию
+          // и предназначены для других форматов игры — они не должны попадать в раздел Allied Units.
+          // Такой фильтр опирается на данные BSData, а не на перечень конкретных ID записей.
+          if (isAlliedSection && node.catalogueId === UNALIGNED_FORCES_ID) {
+            const hasPrimaryAllied = (node.categories ?? []).some(c => c.primary && c.name === 'Allied Units');
+            if (!hasPrimaryAllied) continue;
+          }
           // Отряд или модель — добавляем в результат.
           // В children находится состав отряда, а не отдельные юниты → не рекурсируем.
           result.push(isAlliedSection ? { ...node, _isAllied: true } : node);
