@@ -327,28 +327,22 @@ const CONTAINER_EXCLUSIVE_GROUPS: Record<string, string[][]> = {
 //
 // Источник: <catalogueLinks> в *.cat-файлах репозитория github.com/BSData/wh40k-10e
 // Используется как сетевой фолбэк при недоступности
-// GET /fractions/{id}/ownCatalogues (Shooshpanius/wh40kAPI@76ceb4c, @2ea5612),
-// который уже корректно возвращает все рекурсивно достижимые каталоги через BFS.
+// Статический фолбэк для GET /fractions/{id}/ownCatalogues (Shooshpanius/wh40kAPI@76ceb4c,
+// @2ea5612, @d3dc48af) при ошибке сети. Используется только когда API недоступен или
+// возвращает пустой массив. Содержит только фракции, чьи собственные каталоги
+// нельзя корректно вычислить через BFS из .cat-файлов (library-based фракции).
 const FACTION_OWN_CATALOGUE_IDS: Record<string, string[]> = {
   // ── Chaos - Chaos Knights (46d8-abc8-ef3a-9f85) ──────────────────────────
+  // Library-based фракция: все юниты CK поставляются через linked libraries,
+  // у CK нет собственных selectionEntries в главном .cat файле.
   // catalogueLinks с importRootEntries="true":
   '46d8-abc8-ef3a-9f85': [
     '8106-aad2-918a-9ac', // Chaos - Chaos Knights Library
     'b45c-af22-788a-dfd6', // Chaos - Daemons Library
     '7481-280e-b55e-7867', // Library - Titans
   ],
-  // ── Chaos - Death Guard (5108-f98-63c2-53cb) ─────────────────────────────
-  // catalogueLinks с importRootEntries="true":
-  //   • Chaos - Daemons Library — все хаосовские демоны (включая Нурглитских),
-  //     доступные Death Guard как собственные отряды (не Allied).
-  //   • Chaos Space Marines Legends — Heretic Astartes Legends-юниты
-  //     (Decimator, Deredeo Dreadnought, Typhon и др.): собственные Legends-отряды DG.
-  // Источник: Chaos - Death Guard.cat (github.com/BSData/wh40k-10e)
-  '5108-f98-63c2-53cb': [
-    'b45c-af22-788a-dfd6', // Chaos - Daemons Library
-    'ac3b-689c-4ad4-70cb', // Chaos Space Marines Legends
-  ],
   // ── Imperium - Imperial Knights (25dd-7aa0-6bf4-f2d5) ────────────────────
+  // Library-based фракция: аналогично CK, все юниты IK через IK Library.
   // catalogueLinks с importRootEntries="true":
   '25dd-7aa0-6bf4-f2d5': [
     '1b6d-dc06-5db9-c7d1', // Imperium - Imperial Knights - Library
@@ -362,9 +356,45 @@ const FACTION_OWN_CATALOGUE_IDS: Record<string, string[]> = {
 // importRootEntries="true". Используется для фракций, у которых связанные
 // библиотеки являются именно союзными контингентами, а не ядром фракции.
 //
+// BSData-механизм: юниты в «союзных» библиотеках имеют modifier type=set field=hidden
+// value=true с condition notInstanceOf(scope=primary-catalogue, childId=<primaryFactionId>)
+// — они скрыты по умолчанию и видны только для «родной» фракции. Для остальных фракций
+// они доступны как Allied через toggle-запись «Show X» (selectionEntry type=upgrade).
+//
 // Ключ   — BSData GUID основного каталога фракции.
 // Значение — массив catalogueId, принудительно исключаемых из ownCatalogueIds.
 const FACTION_ALLIED_CATALOGUE_IDS: Record<string, string[]> = {
+  // ── Chaos-фракции — Allied: CK Library + Titans ──────────────────────────
+  // Chaos - Chaos Knights Library (8106): юниты War Dogs/Knights имеют условие
+  //   notInstanceOf(primary-catalogue=46d8), т.е. принадлежат CK.
+  //   Для всех остальных Chaos-фракций они Allied (доступны через «Show Chaos Knights»).
+  // Library - Titans (7481): нет faction-specific условий в BSData, но Titans
+  //   являются Allied для всех Heretic Astartes-фракций (не library-based).
+  // Источник: BSData/wh40k-10e *.cat (проверено через conditionGroups/notInstanceOf)
+  '5108-f98-63c2-53cb': [ // Chaos - Death Guard
+    '8106-aad2-918a-9ac', // Chaos - Chaos Knights Library (Allied: War Dogs, Knights)
+    '7481-280e-b55e-7867', // Library - Titans
+  ],
+  'c8da-e875-58f7-f6d6': [ // Chaos - Chaos Space Marines
+    '8106-aad2-918a-9ac',
+    '7481-280e-b55e-7867',
+  ],
+  'df9a-59b2-f464-59ad': [ // Chaos - World Eaters
+    '8106-aad2-918a-9ac',
+    '7481-280e-b55e-7867',
+  ],
+  '1069-10ff-3ba9-873b': [ // Chaos - Thousand Sons
+    '8106-aad2-918a-9ac',
+    '7481-280e-b55e-7867',
+  ],
+  '03fe-a162-4c02-f07b': [ // Chaos - Emperor's Children
+    '8106-aad2-918a-9ac',
+    '7481-280e-b55e-7867',
+  ],
+  'd265-877b-e03d-30ca': [ // Chaos - Chaos Daemons
+    '8106-aad2-918a-9ac',
+    '7481-280e-b55e-7867',
+  ],
   // ── Imperium - Adeptus Mechanicus (77b9-2f66-3f9b-5cf3) ──────────────────
   // BSData содержит importRootEntries="true" для этих ссылок, однако
   // юниты из данных каталогов являются союзными для AM, а не частью фракции:
