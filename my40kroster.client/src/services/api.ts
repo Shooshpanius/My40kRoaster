@@ -314,41 +314,23 @@ const CONTAINER_EXCLUSIVE_GROUPS: Record<string, string[][]> = {
 };
 
 
-// Статическая карта «собственных» каталогов для «библиотечных» фракций — тех, у которых
-// основной .cat-файл не содержит юнитов напрямую, а использует связанные библиотечные
-// каталоги через importRootEntries="true".
-//
-// Ключ   — BSData GUID основного каталога фракции (id из /fractions).
-// Значение — массив BSData GUID каталогов, связанных через importRootEntries="true".
-//
-// Юниты из «собственных» каталогов НЕ являются «союзными» (Allied) — они основная часть
-// фракции. «Союзными» считаются только юниты из каталогов, связанных БЕЗ importRootEntries
-// (через явные entryLinks с условиями детачмента, например Chaos Space Marines в CK).
-//
-// Источник: <catalogueLinks> в *.cat-файлах репозитория github.com/BSData/wh40k-10e
-// Используется как сетевой фолбэк при недоступности
-// GET /fractions/{id}/ownCatalogues (Shooshpanius/wh40kAPI@76ceb4c, @2ea5612),
-// который уже корректно возвращает все рекурсивно достижимые каталоги через BFS.
+// Статический фолбэк для GET /fractions/{id}/ownCatalogues (wh40kAPI@76ceb4c, @2ea5612,
+// @d3dc48af). Используется только при ошибке сети (если API недоступен или вернул []).
+// Содержит исключительно library-based фракции (у которых нет собственных root-юнитов
+// в главном .cat файле — CK, IK). Обычные фракции здесь не нужны: при fallback
+// ownCatalogueIds = {factionId} и все внешние каталоги корректно помечаются как Allied.
 const FACTION_OWN_CATALOGUE_IDS: Record<string, string[]> = {
   // ── Chaos - Chaos Knights (46d8-abc8-ef3a-9f85) ──────────────────────────
+  // Library-based фракция: все юниты CK поставляются через linked libraries,
+  // у CK нет собственных selectionEntries в главном .cat файле.
   // catalogueLinks с importRootEntries="true":
   '46d8-abc8-ef3a-9f85': [
     '8106-aad2-918a-9ac', // Chaos - Chaos Knights Library
     'b45c-af22-788a-dfd6', // Chaos - Daemons Library
     '7481-280e-b55e-7867', // Library - Titans
   ],
-  // ── Chaos - Death Guard (5108-f98-63c2-53cb) ─────────────────────────────
-  // catalogueLinks с importRootEntries="true":
-  //   • Chaos - Daemons Library — все хаосовские демоны (включая Нурглитских),
-  //     доступные Death Guard как собственные отряды (не Allied).
-  //   • Chaos Space Marines Legends — Heretic Astartes Legends-юниты
-  //     (Decimator, Deredeo Dreadnought, Typhon и др.): собственные Legends-отряды DG.
-  // Источник: Chaos - Death Guard.cat (github.com/BSData/wh40k-10e)
-  '5108-f98-63c2-53cb': [
-    'b45c-af22-788a-dfd6', // Chaos - Daemons Library
-    'ac3b-689c-4ad4-70cb', // Chaos Space Marines Legends
-  ],
   // ── Imperium - Imperial Knights (25dd-7aa0-6bf4-f2d5) ────────────────────
+  // Library-based фракция: аналогично CK, все юниты IK через IK Library.
   // catalogueLinks с importRootEntries="true":
   '25dd-7aa0-6bf4-f2d5': [
     '1b6d-dc06-5db9-c7d1', // Imperium - Imperial Knights - Library
@@ -358,32 +340,31 @@ const FACTION_OWN_CATALOGUE_IDS: Record<string, string[]> = {
 };
 
 // Каталоги, которые для данной фракции всегда считаются Allied (союзными),
-// даже если wh40kAPI возвращает их в составе «собственных» каталогов через
-// importRootEntries="true". Используется для фракций, у которых связанные
-// библиотеки являются именно союзными контингентами, а не ядром фракции.
+// даже если wh40kAPI возвращает их в составе «собственных» каталогов.
+//
+// После применения wh40kAPI@PR#76 (DetermineAlliedLibraryCatalogueIdsAsync)
+// эндпоинт /ownCatalogues автоматически исключает library=true каталоги Allied-типа
+// (например, CK Library и Titans для Chaos-фракций, IK Library для AM).
+//
+// Здесь остаются только каталоги, которые API не может определить автоматически —
+// в первую очередь library=false фракции, связанные через importRootEntries.
 //
 // Ключ   — BSData GUID основного каталога фракции.
 // Значение — массив catalogueId, принудительно исключаемых из ownCatalogueIds.
 const FACTION_ALLIED_CATALOGUE_IDS: Record<string, string[]> = {
   // ── Imperium - Adeptus Mechanicus (77b9-2f66-3f9b-5cf3) ──────────────────
-  // BSData содержит importRootEntries="true" для этих ссылок, однако
-  // юниты из данных каталогов являются союзными для AM, а не частью фракции:
-  //   • IK Library — Cerastus Knights (Acheron/Atrapos/Castigator/Lancer)
-  //     являются Questor Mechanicus, т.е. рыцарями, присягнувшими AM, но
-  //     остающимися Allied, а не core-отрядами AM.
-  //   • Agents of the Imperium и Titans — аналогично Allied контингенты.
-  // Источник: Imperium - Adeptus Mechanicus.cat (github.com/BSData/wh40k-10e)
+  // Agents of the Imperium (b00) — library=false, поэтому алгоритм API его не фильтрует.
+  // IK Library (1b6d) и Titans (7481) теперь корректно помечаются как Allied самим API
+  // (Rule 2: IK — library-based фракция, тоже ссылающаяся на эти каталоги).
   '77b9-2f66-3f9b-5cf3': [
-    '1b6d-dc06-5db9-c7d1', // Imperium - Imperial Knights - Library (Cerastus Knights)
-    'b00-cd86-4b4c-97ba',  // Imperium - Agents of the Imperium
-    '7481-280e-b55e-7867', // Library - Titans
+    'b00-cd86-4b4c-97ba', // Imperium - Agents of the Imperium (library=false)
   ],
 };
 
 // Загружает список «собственных» каталогов фракции через прокси-эндпоинт
 // GET /api/bsdata/fractions/{id}/own-catalogues → wh40kAPI GET /fractions/{id}/ownCatalogues.
-// «Собственные» каталоги — это каталог фракции плюс все каталоги, связанные через
-// importRootEntries="true" в BSData (рекурсивно, BFS). Реализовано в wh40kAPI@76ceb4c, @2ea5612.
+// «Собственные» каталоги — фракционный каталог + importRootEntries=true рекурсивно,
+// минус Allied-библиотеки (DetermineAlliedLibraryCatalogueIdsAsync, wh40kAPI@PR#76).
 // При ошибке сети или ответе не-2xx возвращает null, и вызывающий код
 // использует FACTION_OWN_CATALOGUE_IDS как сетевой фолбэк.
 async function fetchOwnCatalogueIds(factionId: string): Promise<Set<string> | null> {
